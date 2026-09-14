@@ -1,0 +1,44 @@
+# An Ubuntu workspace that runs as an ordinary measured workload. Connect with
+# `tinfoil ssh`, which tunnels over the shim's attested TLS.
+cvm-version: 0.11.0
+cpus: 8
+memory: 32768
+
+networks:
+  dev:
+    egress: open          # needed for apt and pip
+
+containers:
+  - name: "workspace"
+    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
+    restart: always
+    networks: [dev]
+
+    # SSH, reachable only through the enclave's attested tunnel, never directly.
+    ports: ["2022:2222"]
+
+    # A workspace needs a writable rootfs for apt; the default is read-only.
+    read_only: false
+
+    env:
+      - SSH_AUTHORIZED_KEYS
+      - SSH_HOST_KEY
+
+    tmpfs:
+      /run: "rw,nosuid,nodev,mode=755"
+
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 2s
+
+    # For a GPU box add `runtime: nvidia` and `gpus: 1`, and set the top-level
+    # `gpus:` to the attested count.
+
+shim:
+  # Unused: this workspace serves no HTTP API, but the field has to be set.
+  upstream-port: 2222
+  # Require a Tinfoil API key before the enclave will open a tunnel at all.
+  authenticated: true
