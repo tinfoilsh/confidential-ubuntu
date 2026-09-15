@@ -16,7 +16,7 @@ volumes:
 
 containers:
   - name: "workspace"
-    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
+    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:2bd7453ffbb7f990c3037b73fb2e51d6ed41df0a485c470e49a5e9aef8edca4c" # v0.1.1
     restart: always
     cvm_admin: true
     stop_timeout: 30
