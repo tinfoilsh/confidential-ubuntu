@@ -1,0 +1,28 @@
+name: Test Ubuntu workspace
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Check shell scripts
+        run: |
+          scripts=(entrypoint.sh rootfs/healthcheck.sh rootfs/usr/local/libexec/* rootfs/usr/local/sbin/* tests/*.sh)
+          for script in "${scripts[@]}"; do bash -n "$script"; done
+          shellcheck -x "${scripts[@]}"
+      - name: Build image
+        run: docker build -t confidential-ubuntu:test .
+      - name: Check bootstrap helpers
+        run: docker run --rm --entrypoint /bin/bash -v "$PWD/tests:/tests:ro" confidential-ubuntu:test /tests/bootstrap.sh
+      - name: Check Ubuntu lifecycle and persistence
+        run: sudo bash tests/integration.sh confidential-ubuntu:test
