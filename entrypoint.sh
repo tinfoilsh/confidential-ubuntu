@@ -1,45 +1,31 @@
 #!/bin/bash
 # Confidential Ubuntu workspace: install credentials and supervise SSH + Docker.
 #
-# SSH_AUTHORIZED_KEYS (required) public keys, newline separated. Supplied per
+# SSH_KEYS            (required) public keys, newline separated. Supplied per
 #                     deployment through the external config.
-# SSH_HOST_KEY        (optional) an OpenSSH PEM private key, for a stable host
-#                     identity. Omitted, one is generated each boot.
-# SSH_PORT            (optional) defaults to 2222.
+# SSH_HOST_KEY        (required) an OpenSSH private key, supplied as a secret
+#                     for a stable host identity.
+# SSH_TUNNEL_TARGET   (optional) user@host given a reverse tunnel that publishes
+#                     this sshd there on 127.0.0.1:SSH_TUNNEL_PORT (default 2022).
+#                     SSH_TUNNEL_KEY is the client's OpenSSH private key and
+#                     SSH_TUNNEL_HOST_KEY the target's public host key.
 set -euo pipefail
 
-port="${SSH_PORT:-2222}"
 run_dir=/run/ssh
-key_file="$run_dir/dropbear_ed25519_host_key"
 
-mkdir -p "$run_dir"
+mkdir -p "$run_dir" /run/sshd
 chmod 0700 "$run_dir"
 
-# Fail loudly rather than boot a workspace nobody can reach: given a malformed
-# key dropbear starts happily and just turns everyone away.
-printf '%s\n' "${SSH_AUTHORIZED_KEYS:-}" | grep -qE '^(ssh-(ed25519|rsa) |ecdsa-sha2-|sk-)' || {
-    echo "confidential-ubuntu: SSH_AUTHORIZED_KEYS has no usable public key" >&2
+# Require a usable public key before starting the workspace.
+printf '%s\n' "${SSH_KEYS:-}" > "$run_dir/authorized_keys"
+chmod 0600 "$run_dir/authorized_keys"
+ssh-keygen -lf "$run_dir/authorized_keys" >/dev/null 2>&1 || {
+    echo "confidential-ubuntu: SSH_KEYS has no usable public key" >&2
     exit 1
 }
-printf '%s\n' "$SSH_AUTHORIZED_KEYS" > "$run_dir/authorized_keys"
-chmod 0600 "$run_dir/authorized_keys"
 
-if [ -n "${SSH_HOST_KEY:-}" ]; then
-    printf '%s\n' "$SSH_HOST_KEY" > "$run_dir/hostkey.pem"
-    chmod 0600 "$run_dir/hostkey.pem"
-    /usr/local/bin/dropbearconvert openssh dropbear "$run_dir/hostkey.pem" "$key_file" >/dev/null 2>&1 || {
-        echo "confidential-ubuntu: SSH_HOST_KEY is not an OpenSSH PEM private key" >&2
-        exit 1
-    }
-    rm -f "$run_dir/hostkey.pem"
-else
-    /usr/local/bin/dropbearkey -t ed25519 -f "$key_file" >/dev/null 2>&1
-fi
-chmod 0600 "$key_file"
-
-# Logged so an ephemeral host key can still be pinned by a client that has just
-# verified the enclave's attestation.
-/usr/local/bin/dropbearkey -y -f "$key_file" | sed -n 's/^Fingerprint: /confidential-ubuntu: host key /p'
+printf '%s\n' "$SSH_HOST_KEY" > "$run_dir/host_key"
+chmod 0600 "$run_dir/host_key"
 
 # Docker's state sits beside /workspace, not inside it: a nested bind of /workspace is recursive.
 mkdir -p /mnt/disk/workspace /workspace
@@ -65,12 +51,10 @@ for attempt in {1..10}; do
     sleep 0.1
 done
 
-docker_pid=
-ssh_pid=
 cleanup() {
     trap - EXIT
-    for pid in "$ssh_pid" "$docker_pid"; do
-        if [ -n "$pid" ]; then kill -TERM "$pid" 2>/dev/null || true; fi
+    for pid in $(jobs -pr); do
+        kill -TERM "$pid" 2>/dev/null || true
     done
     wait || true
 }
@@ -78,7 +62,11 @@ trap cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
-dockerd &
+while sleep 5; do sync; done &
+
+dockerd --data-root=/mnt/disk/docker --storage-driver=overlay2 \
+    --feature=containerd-snapshotter=false --exec-opt native.cgroupdriver=cgroupfs \
+    --firewall-backend=nftables --ip6tables=false --shutdown-timeout=10 &
 docker_pid=$!
 for attempt in {1..60}; do
     if ! kill -0 "$docker_pid" 2>/dev/null; then
@@ -93,7 +81,16 @@ if ! timeout 2 docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; t
     exit 1
 fi
 
-# -s and -g disable password authentication entirely, including for root.
-/usr/local/bin/dropbear -F -E -s -g -r "$key_file" -p "$port" &
+/usr/sbin/sshd -D -e &
 ssh_pid=$!
+if [ -n "${SSH_TUNNEL_TARGET:-}" ]; then
+    printf '%s\n' "$SSH_TUNNEL_KEY" > "$run_dir/tunnel_key"
+    chmod 0600 "$run_dir/tunnel_key"
+    printf '%s %s\n' "${SSH_TUNNEL_TARGET#*@}" "$SSH_TUNNEL_HOST_KEY" > "$run_dir/tunnel_known_hosts"
+    while sleep 5; do
+        ssh -NT -i "$run_dir/tunnel_key" -o UserKnownHostsFile="$run_dir/tunnel_known_hosts" \
+            -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+            -R "127.0.0.1:${SSH_TUNNEL_PORT:-2022}:127.0.0.1:2222" "$SSH_TUNNEL_TARGET" || true
+    done &
+fi
 if wait -n "$docker_pid" "$ssh_pid"; then exit 1; else exit "$?"; fi

@@ -1,0 +1,6 @@
+Port 2222
+HostKey /run/ssh/host_key
+AuthorizedKeysFile /run/ssh/authorized_keys
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+Subsystem sftp internal-sftp

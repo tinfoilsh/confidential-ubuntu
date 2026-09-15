@@ -27,7 +27,15 @@ containers:
     ports: ["2022:2222"]
 
     env:
-      - SSH_AUTHORIZED_KEYS
+      - SSH_KEYS
+      - SSH_TUNNEL_TARGET
+      - SSH_TUNNEL_PORT
+      - SSH_TUNNEL_KEY
+      - SSH_TUNNEL_HOST_KEY
+
+    # The host identity is a vault secret, so boot fails rather than falling
+    # back to a per-boot key the host could have watched being generated.
+    secrets:
       - SSH_HOST_KEY
 
     tmpfs:
