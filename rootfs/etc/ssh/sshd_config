@@ -1,0 +1,11 @@
+Port 2222
+Include /etc/ssh/sshd_config.d/*.conf
+HostKey /run/workspace/host_key
+AuthorizedKeysFile .ssh/authorized_keys .ssh/tinfoil_authorized_keys
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp internal-sftp

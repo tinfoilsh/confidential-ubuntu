@@ -1,96 +1,138 @@
 #!/bin/bash
-# Confidential Ubuntu workspace: install credentials and supervise SSH + Docker.
-#
-# SSH_KEYS            (required) public keys, newline separated. Supplied per
-#                     deployment through the external config.
-# SSH_HOST_KEY        (required) an OpenSSH private key, supplied as a secret
-#                     for a stable host identity.
-# SSH_TUNNEL_TARGET   (optional) user@host given a reverse tunnel that publishes
-#                     this sshd there on 127.0.0.1:SSH_TUNNEL_PORT (default 2022).
-#                     SSH_TUNNEL_KEY is the client's OpenSSH private key and
-#                     SSH_TUNNEL_HOST_KEY the target's public host key.
+# Seed a persistent Ubuntu root, carry runtime mounts into it, and start systemd.
 set -euo pipefail
 
-run_dir=/run/ssh
+disk=/mnt/disk
+credentials=/run/workspace
 
-mkdir -p "$run_dir" /run/sshd
-chmod 0700 "$run_dir"
+fail() { printf 'confidential-ubuntu: %s\n' "$*" >&2; exit 1; }
 
-# Require a usable public key before starting the workspace.
-printf '%s\n' "${SSH_KEYS:-}" > "$run_dir/authorized_keys"
-chmod 0600 "$run_dir/authorized_keys"
-ssh-keygen -lf "$run_dir/authorized_keys" >/dev/null 2>&1 || {
-    echo "confidential-ubuntu: SSH_KEYS has no usable public key" >&2
-    exit 1
+stage_credentials() {
+    install -d -m 0700 "$credentials"
+    printf '%s\n' "${SSH_KEYS:-}" > "$credentials/authorized_keys"
+    ssh-keygen -lf "$credentials/authorized_keys" >/dev/null 2>&1 || fail 'SSH_KEYS has no usable public key'
+    printf '%s\n' "${SSH_HOST_KEY:?SSH_HOST_KEY is required}" > "$credentials/host_key"
+    ssh-keygen -y -P '' -f "$credentials/host_key" >/dev/null 2>&1 || fail 'SSH_HOST_KEY must be an unencrypted OpenSSH private key'
+
+    if [[ -n ${SSH_TUNNEL_TARGET:-} ]]; then
+        local target=$SSH_TUNNEL_TARGET port=${SSH_TUNNEL_PORT:-2022}
+        local target_pattern='^[][a-zA-Z0-9_.:@%+-]+$'
+        # These values become SSH configuration, so accept a single user@host or host.
+        [[ $target =~ $target_pattern ]] || fail 'SSH_TUNNEL_TARGET must be user@host or host'
+        port=${port#"${port%%[!0]*}"}
+        if [[ ! $port =~ ^[1-9][0-9]{0,4}$ ]] || (( port > 65535 )); then
+            fail 'SSH_TUNNEL_PORT must be between 1 and 65535'
+        fi
+        printf '%s\n' "${SSH_TUNNEL_KEY:?SSH_TUNNEL_KEY is required}" > "$credentials/tunnel_key"
+        printf '%s %s\n' "${target#*@}" "${SSH_TUNNEL_HOST_KEY:?SSH_TUNNEL_HOST_KEY is required}" > "$credentials/tunnel_known_hosts"
+        # Older persistent roots still have a tunnel helper that reads these files.
+        printf '%s\n' "$target" > "$credentials/tunnel_target"
+        printf '%s\n' "$port" > "$credentials/tunnel_port"
+        cat /etc/ssh/workspace_tunnel.conf > "$credentials/tunnel.conf"
+        printf 'HostName %s\nRemoteForward 127.0.0.1:%s 127.0.0.1:2222\n' "${target#*@}" "$port" >> "$credentials/tunnel.conf"
+        if [[ $target == *@* ]]; then
+            printf 'User %s\n' "${target%%@*}" >> "$credentials/tunnel.conf"
+        fi
+    fi
+    chmod 0600 "$credentials"/*
+    unset SSH_KEYS SSH_HOST_KEY SSH_TUNNEL_TARGET SSH_TUNNEL_PORT SSH_TUNNEL_KEY SSH_TUNNEL_HOST_KEY
 }
 
-printf '%s\n' "$SSH_HOST_KEY" > "$run_dir/host_key"
-chmod 0600 "$run_dir/host_key"
-
-# Docker's state sits beside /workspace, not inside it: a nested bind of /workspace is recursive.
-mkdir -p /mnt/disk/workspace /workspace
-mountpoint -q /workspace || mount --bind /mnt/disk/workspace /workspace
-sysctl -w net.ipv4.ip_forward=1
-
-# cgroup v2 forbids processes in an internal node with domain controllers.
-# The privileged container has its own writable cgroup namespace; keep our
-# supervisor/daemons in a leaf so Docker can create sibling workload cgroups.
-mkdir -p /sys/fs/cgroup/init
-read -ra controllers < /sys/fs/cgroup/cgroup.controllers
-for attempt in {1..10}; do
-    mapfile -t pids < /sys/fs/cgroup/cgroup.procs
-    for pid in "${pids[@]}"; do
-        echo "$pid" > /sys/fs/cgroup/init/cgroup.procs 2>/dev/null || true
-    done
-    # A concurrent Docker exec/healthcheck may have entered the old cgroup.
-    if printf '+%s ' "${controllers[@]}" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null; then break; fi
-    if [ "$attempt" = 10 ]; then
-        echo "confidential-ubuntu: cannot delegate cgroup v2 controllers" >&2
-        exit 1
+seed_root() (
+    # Hold the lock only while installing or resetting the OS.
+    umask 077
+    exec 9> "$disk/.rootfs.lock"
+    flock -x 9
+    umask 022
+    root=$disk/rootfs
+    if [[ -e $disk/.reset-rootfs ]]; then
+        if [[ -e $root ]]; then
+            mv -T -- "$root" "$root.previous.$(date +%s.%N)"
+        fi
+        rm -- "$disk/.reset-rootfs"
+        sync -f "$disk"
     fi
-    sleep 0.1
-done
+    if [[ ! -e $root ]]; then
+        staging=$disk/.rootfs.new
+        # An interrupted copy must never become the installed OS.
+        rm -rf -- "$staging"
+        install -d -m 0755 "$staging"
+        rsync -aHAXx --numeric-ids \
+            --exclude='/mnt/disk/***' --exclude='/proc/***' --exclude='/sys/***' \
+            --exclude='/dev/***' --exclude='/run/***' --exclude='/tinfoil/***' / "$staging/"
+        mkdir -p "$staging"/{dev,proc,sys,run,tinfoil,mnt/disk,workspace}
+        machine_id=$(< /proc/sys/kernel/random/uuid)
+        machine_id=${machine_id//-/}
+        [[ $machine_id =~ ^[0-9a-f]{32}$ ]] || fail 'invalid kernel-generated machine ID'
+        hostname=workspace-${machine_id:0:12}
+        printf '%s\n' "$machine_id" > "$staging/etc/machine-id"
+        printf '%s\n' "$hostname" > "$staging/etc/hostname"
+        printf '127.0.0.1 localhost\n127.0.1.1 %s\n::1 localhost ip6-localhost ip6-loopback\n' "$hostname" > "$staging/etc/hosts"
+        printf '1\n' > "$staging/.workspace-root-version"
+        sync -f "$disk"
+        mv -T -- "$staging" "$root"
+        sync -f "$disk"
+    fi
+    [[ $(< "$root/.workspace-root-version") == 1 ]] || fail 'unsupported persistent root version'
+    mkdir -p "$disk/workspace" "$disk/docker"
+)
 
-cleanup() {
-    trap - EXIT
-    for pid in $(jobs -pr); do
-        kill -TERM "$pid" 2>/dev/null || true
-    done
-    wait || true
+read_mounts() {
+    local inventory encoded target parent
+    # Raw findmnt output hex-escapes whitespace and backslashes. Decode once,
+    # after sorting, so even paths containing newlines stay intact in the array.
+    inventory=$(findmnt --kernel --tab-file "$1" --raw --noheadings --output TARGET | LC_ALL=C sort -u)
+    mounts=()
+    while IFS= read -r encoded; do
+        printf -v target '%b' "$encoded"
+        case $target in
+            /|"$disk"|"$disk"/*|/etc/hostname|/etc/hosts) continue ;;
+        esac
+        for parent in "${mounts[@]}"; do
+            # A moved parent carries its children, including writable cgroups.
+            [[ $target == "$parent"/* ]] && continue 2
+        done
+        mounts+=("$target")
+    done <<< "$inventory"
 }
-trap cleanup EXIT
-trap 'exit 143' TERM
-trap 'exit 130' INT
 
-while sleep 5; do sync; done &
-
-dockerd --data-root=/mnt/disk/docker --storage-driver=overlay2 \
-    --feature=containerd-snapshotter=false --exec-opt native.cgroupdriver=cgroupfs \
-    --firewall-backend=nftables --ip6tables=false --shutdown-timeout=10 &
-docker_pid=$!
-for attempt in {1..60}; do
-    if ! kill -0 "$docker_pid" 2>/dev/null; then
-        echo "confidential-ubuntu: Docker exited during startup" >&2
-        exit 1
+prepare_mountpoint() {
+    local destination=$1$2 target=$2
+    # Replace persisted absolute symlinks before installing runtime file mounts.
+    if [[ -L $destination ]]; then rm -- "$destination"; fi
+    if [[ -d $target ]]; then
+        mkdir -p -- "$destination"
+    else
+        mkdir -p -- "${destination%/*}"
+        touch -- "$destination"
     fi
-    if timeout 2 docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; then break; fi
-    sleep 1
-done
-if ! timeout 2 docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; then
-    echo "confidential-ubuntu: Docker did not become ready" >&2
-    exit 1
-fi
+}
 
-/usr/sbin/sshd -D -e &
-ssh_pid=$!
-if [ -n "${SSH_TUNNEL_TARGET:-}" ]; then
-    printf '%s\n' "$SSH_TUNNEL_KEY" > "$run_dir/tunnel_key"
-    chmod 0600 "$run_dir/tunnel_key"
-    printf '%s %s\n' "${SSH_TUNNEL_TARGET#*@}" "$SSH_TUNNEL_HOST_KEY" > "$run_dir/tunnel_known_hosts"
-    while sleep 5; do
-        ssh -NT -i "$run_dir/tunnel_key" -o UserKnownHostsFile="$run_dir/tunnel_known_hosts" \
-            -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
-            -R "127.0.0.1:${SSH_TUNNEL_PORT:-2022}:127.0.0.1:2222" "$SSH_TUNNEL_TARGET" || true
-    done &
-fi
-if wait -n "$docker_pid" "$ssh_pid"; then exit 1; else exit "$?"; fi
+boot() {
+    [[ $# == 0 ]] || { printf 'usage: /entrypoint\n' >&2; exit 2; }
+    [[ $$ == 1 ]] || fail 'the entrypoint must run as PID 1'
+    mountpoint -q "$disk" || fail '/mnt/disk must be the mounted encrypted volume'
+    umask 077
+    stage_credentials
+    # Run this image's helper even when the persistent root is from an older image.
+    install -m 0700 /usr/local/libexec/workspace-init "$credentials/init"
+    seed_root
+    umask 022
+    local root=$disk/rootfs target
+    read_mounts /proc/self/mountinfo
+    # Do not update /run/mount/utab while moving /run itself out of this root.
+    mount -n --make-rprivate /
+    mount -n --bind "$root" "$root"
+    # The encrypted volume is nosuid. Ubuntu's sudo needs suid on its root bind.
+    mount -n -o remount,bind,suid,nodev "$root"
+    for target in "${mounts[@]}"; do prepare_mountpoint "$root" "$target"; done
+    mkdir -p "$root$disk" "$root/workspace" "$root/.oldroot"
+    mount -n --bind "$disk" "$root$disk"
+    mount -n --bind "$disk/workspace" "$root/workspace"
+    for target in "${mounts[@]}"; do mount -n --move "$target" "$root$target"; done
+    cd "$root"
+    pivot_root . .oldroot
+    exec chroot . /bin/bash /run/workspace/init
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then boot "$@"; fi
