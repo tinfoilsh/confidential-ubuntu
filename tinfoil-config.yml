@@ -1,4 +1,4 @@
-# An Ubuntu workspace that runs as an ordinary measured workload. Connect with
+# An Ubuntu workspace with measured CVM-wide administrator access. Connect with
 # `tinfoil ssh`, which tunnels over the shim's attested TLS.
 cvm-version: 0.11.0
 cpus: 8
@@ -12,13 +12,12 @@ containers:
   - name: "workspace"
     image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
     restart: always
+    cvm_admin: true
+    stop_timeout: 30
     networks: [dev]
 
     # SSH, reachable only through the enclave's attested tunnel, never directly.
     ports: ["2022:2222"]
-
-    # A workspace needs a writable rootfs for apt; the default is read-only.
-    read_only: false
 
     env:
       - SSH_AUTHORIZED_KEYS
@@ -30,7 +29,7 @@ containers:
     healthcheck:
       test: ["CMD", "/healthcheck.sh"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 12
       start_period: 2s
 

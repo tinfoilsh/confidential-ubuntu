@@ -1,0 +1,10 @@
+{
+  "hosts": ["unix:///var/run/docker.sock"],
+  "firewall-backend": "nftables",
+  "ipv6": false,
+  "ip6tables": false,
+  "storage-driver": "overlay2",
+  "features": {"containerd-snapshotter": false},
+  "exec-opts": ["native.cgroupdriver=cgroupfs"],
+  "shutdown-timeout": 10
+}

@@ -1,12 +1,11 @@
 #!/bin/bash
-# Confidential Ubuntu workspace: install credentials, then hand off to dropbear.
+# Confidential Ubuntu workspace: install credentials and supervise SSH + Docker.
 #
 # SSH_AUTHORIZED_KEYS (required) public keys, newline separated. Supplied per
 #                     deployment through the external config.
 # SSH_HOST_KEY        (optional) an OpenSSH PEM private key, for a stable host
 #                     identity. Omitted, one is generated each boot.
-# SSH_PORT            (optional) defaults to 2222. Below 1024 would need
-#                     CAP_NET_BIND_SERVICE, which the CVM drops.
+# SSH_PORT            (optional) defaults to 2222.
 set -euo pipefail
 
 port="${SSH_PORT:-2222}"
@@ -42,5 +41,59 @@ chmod 0600 "$key_file"
 # verified the enclave's attestation.
 /usr/local/bin/dropbearkey -y -f "$key_file" | sed -n 's/^Fingerprint: /confidential-ubuntu: host key /p'
 
+# Keep Docker's storage off the container's OverlayFS writable layer.
+mkdir -p /var/lib/docker
+mountpoint -q /var/lib/docker || mount -t tmpfs -o nosuid,nodev,mode=0710 tmpfs /var/lib/docker
+sysctl -w net.ipv4.ip_forward=1
+
+# cgroup v2 forbids processes in an internal node with domain controllers.
+# The privileged container has its own writable cgroup namespace; keep our
+# supervisor/daemons in a leaf so Docker can create sibling workload cgroups.
+mkdir -p /sys/fs/cgroup/init
+read -ra controllers < /sys/fs/cgroup/cgroup.controllers
+for attempt in {1..10}; do
+    mapfile -t pids < /sys/fs/cgroup/cgroup.procs
+    for pid in "${pids[@]}"; do
+        echo "$pid" > /sys/fs/cgroup/init/cgroup.procs 2>/dev/null || true
+    done
+    # A concurrent Docker exec/healthcheck may have entered the old cgroup.
+    if printf '+%s ' "${controllers[@]}" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null; then break; fi
+    if [ "$attempt" = 10 ]; then
+        echo "confidential-ubuntu: cannot delegate cgroup v2 controllers" >&2
+        exit 1
+    fi
+    sleep 0.1
+done
+
+docker_pid=
+ssh_pid=
+cleanup() {
+    trap - EXIT
+    for pid in "$ssh_pid" "$docker_pid"; do
+        if [ -n "$pid" ]; then kill -TERM "$pid" 2>/dev/null || true; fi
+    done
+    wait || true
+}
+trap cleanup EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+
+dockerd &
+docker_pid=$!
+for attempt in {1..60}; do
+    if ! kill -0 "$docker_pid" 2>/dev/null; then
+        echo "confidential-ubuntu: Docker exited during startup" >&2
+        exit 1
+    fi
+    if timeout 2 docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; then break; fi
+    sleep 1
+done
+if ! timeout 2 docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; then
+    echo "confidential-ubuntu: Docker did not become ready" >&2
+    exit 1
+fi
+
 # -s and -g disable password authentication entirely, including for root.
-exec /usr/local/bin/dropbear -F -E -s -g -r "$key_file" -p "$port"
+/usr/local/bin/dropbear -F -E -s -g -r "$key_file" -p "$port" &
+ssh_pid=$!
+if wait -n "$docker_pid" "$ssh_pid"; then exit 1; else exit "$?"; fi
