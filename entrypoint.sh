@@ -41,9 +41,9 @@ chmod 0600 "$key_file"
 # verified the enclave's attestation.
 /usr/local/bin/dropbearkey -y -f "$key_file" | sed -n 's/^Fingerprint: /confidential-ubuntu: host key /p'
 
-# Keep Docker's storage off the container's OverlayFS writable layer.
-mkdir -p /var/lib/docker
-mountpoint -q /var/lib/docker || mount -t tmpfs -o nosuid,nodev,mode=0710 tmpfs /var/lib/docker
+# Docker's state sits beside /workspace, not inside it: a nested bind of /workspace is recursive.
+mkdir -p /mnt/disk/workspace /workspace
+mountpoint -q /workspace || mount --bind /mnt/disk/workspace /workspace
 sysctl -w net.ipv4.ip_forward=1
 
 # cgroup v2 forbids processes in an internal node with domain controllers.

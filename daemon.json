@@ -1,5 +1,6 @@
 {
   "hosts": ["unix:///var/run/docker.sock"],
+  "data-root": "/mnt/disk/docker",
   "firewall-backend": "nftables",
   "ipv6": false,
   "ip6tables": false,

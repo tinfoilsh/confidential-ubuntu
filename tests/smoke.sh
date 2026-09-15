@@ -6,7 +6,8 @@ grep -Eq '^NoNewPrivs:[[:space:]]+0$' /proc/1/status
 test "$(docker ps -aq | wc -l)" = 0
 test ! -e /host
 test "$(cat /proc/sys/kernel/modules_disabled)" = 1
-test "$(findmnt -n -o FSTYPE /var/lib/docker)" = tmpfs
+test "$(findmnt -n -o FSTYPE /workspace)" = ext4
+test "$(docker info --format '{{.DockerRootDir}}')" = /mnt/disk/docker
 docker info --format 'driver={{.Driver}} cgroup={{.CgroupDriver}} v{{.CgroupVersion}}'
 if ss -lnt | grep -Eq ':(2375|2376)\b'; then
   echo 'Docker TCP API must not be exposed' >&2

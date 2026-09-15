@@ -10,8 +10,7 @@ by repo + tag from the dashboard or:
 
     tinctl deploy tinfoilsh/confidential-ubuntu
 
-Requires a CVM image and hosting/measurement validators that support `cvm_admin`.
-Update `cvm-version` to that release before publishing; older images reject it.
+Requires a host whose tinfoild accepts `cvm_admin` (tinfoild PR #188 or later).
 
 ## Connect
 
@@ -29,6 +28,10 @@ which is required — without it the workspace exits rather than coming up
 healthy; and optionally `SSH_HOST_KEY`, an OpenSSH PEM private key, for a host
 identity that stays the same across reboots.
 
+Set one secret, `WORKSPACE_VOLUME_KEY`: 64 random bytes, base64-encoded
+(`head -c 64 /dev/urandom | base64 -w0`). It is the only key to the disk;
+lose it and the data is unrecoverable.
+
 To resize the box or attach a GPU, edit `cpus`, `memory` and `gpus` in
 `tinfoil-config.yml`, and add `runtime: nvidia` to the container.
 
@@ -36,7 +39,7 @@ To resize the box or attach a GPU, edit `cpus`, `memory` and `gpus` in
 
 Run `docker build` and `docker run` normally. The inner daemon listens only on
 `/var/run/docker.sock`; no Docker TCP API or host Docker socket is exposed.
-It uses native OverlayFS on a separate tmpfs, cgroup v2 with cgroupfs, and
+It uses native OverlayFS on the disk, cgroup v2 with cgroupfs, and
 nftables NAT. No FUSE or dynamically loaded kernel modules are needed. Docker
 Swarm/overlay networking and arbitrary kernel-module-dependent features are not
 supported by this setup. Nested `--network host` means the workspace's network
@@ -47,17 +50,22 @@ To reach a nested web service, publish it inside the workspace with
 `tinfoil ssh workspace -- -L 8080:127.0.0.1:8080`. Only SSH is published in the
 measured outer config; the shim tunnel is unchanged.
 
-Inner Docker images, containers, build cache, and named volumes are RAM-backed
-and reset whenever the workspace stops/restarts. The workspace's OS changes
-survive container restart but not recreation or CVM reboot. Neither is durable
-storage. For persistent customer files, declare an optional attached volume and
-mount it at `/workspace`; after unlocking, nested containers can use
-`-v /workspace:/data`. Do not mount persistent storage at `/var/lib/docker`.
+`/workspace` and Docker's images, containers, build cache, and named volumes
+live on one encrypted, integrity-protected disk that boot unlocks with
+`WORKSPACE_VOLUME_KEY` before the container starts, formatted on first boot and
+reopened on every later one. Changes to the OS itself, such as apt installs,
+survive a container restart but not a CVM reboot. The host picks the disk's
+size unless the volume declares `size:`, and the size is fixed at first launch.
+Nested containers use the disk with `-v /workspace:/data`; Docker's own state
+sits beside that tree, not inside it.
 
 The entrypoint waits for Docker before starting SSH. If either daemon exits,
 it terminates the other and exits; the measured restart policy restarts the
-workspace. Docker gets 10 seconds to stop nested containers within the outer
-30-second stop timeout. `docker-init` reaps orphaned processes.
+workspace, and Docker gets 10 seconds to stop nested containers within the
+outer 30-second stop timeout. Stopping the deployment is a hard power-off with
+no such drain: the kernel flushes the disk on its own schedule, so writes from
+the last few seconds before a stop can be lost. `docker-init` reaps orphaned
+processes.
 
 ## Trust model
 
@@ -74,12 +82,13 @@ from an owner-controlled source before entrusting the workspace with secrets.
 
 ## Runtime smoke test
 
-Run `bash tests/smoke.sh` inside a **fresh disposable CVM workspace**, against its
-inner daemon, not against your machine's Docker socket. It checks root/NNP,
-locked modules, tmpfs storage, cgroup resource limits, privileged mounts, builds,
-DNS/Internet access, bind mounts, and nested port publishing. It leaves a web
-server at `127.0.0.1:8080` for the SSH-forwarding check above. Stop the disposable
-workspace afterward to discard its test Docker state.
+Run `tests/smoke.sh` inside a **fresh disposable CVM workspace**, against its
+inner daemon, not against your machine's Docker socket; the script is not in the
+image, so feed it over the tunnel: `tinfoil ssh workspace -- bash -s < tests/smoke.sh`.
+It checks root/NNP, locked modules, disk-backed storage, cgroup resource limits,
+privileged mounts, builds, DNS/Internet access, bind mounts, and nested port
+publishing. It leaves a web server at `127.0.0.1:8080` for the SSH-forwarding
+check above, and its images stay on the disk until you remove them.
 
 Also qualify daemon failure/restart and shutdown on the target CVM image; stock
 host DinD tests do not exercise the CVM's module lock or guest firewall. An

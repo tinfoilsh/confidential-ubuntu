@@ -1,12 +1,18 @@
 # An Ubuntu workspace with measured CVM-wide administrator access. Connect with
 # `tinfoil ssh`, which tunnels over the shim's attested TLS.
-cvm-version: 0.11.0
+cvm-version: 0.14.8
 cpus: 8
 memory: 32768
 
 networks:
   dev:
     egress: open          # needed for apt and pip
+
+volumes:
+  - name: workspace
+    # Persistent encrypted disk, opened at boot with the 64-byte key in this secret.
+    exec: true
+    key-secret: WORKSPACE_VOLUME_KEY
 
 containers:
   - name: "workspace"
@@ -15,6 +21,7 @@ containers:
     cvm_admin: true
     stop_timeout: 30
     networks: [dev]
+    volumes: [workspace:/mnt/disk]
 
     # SSH, reachable only through the enclave's attested tunnel, never directly.
     ports: ["2022:2222"]
