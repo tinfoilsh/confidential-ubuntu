@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+umount -ln /.oldroot
+# Leave device management with the CVM, while its cgroup submount stays writable.
+mount -o remount,bind,ro /sys
+IFS=: read -r _ _ _ _ _ user_home _ < <(getent passwd ubuntu)
+[[ $user_home == /* ]]
+install -d -m 0700 -o ubuntu -g ubuntu "$user_home/.ssh"
+install -m 0600 -o ubuntu -g ubuntu /run/workspace/authorized_keys "$user_home/.ssh/tinfoil_authorized_keys"
+if [[ $(stat -c %u /workspace) == 0 ]]; then chown ubuntu:ubuntu /workspace; fi
+# Rebuild the cache after this boot's NVIDIA driver mounts have arrived.
+ldconfig
+# Docker's nftables backend needs forwarding in each new network namespace.
+# Use a runtime drop-in so existing persistent OS installations get it too.
+mkdir -p /run/systemd/system/docker.service.d
+printf '[Service]\nExecStartPre=/usr/sbin/sysctl -q -w net.ipv4.ip_forward=1\n' > /run/systemd/system/docker.service.d/workspace-forwarding.conf
+export container=docker
+exec /sbin/init

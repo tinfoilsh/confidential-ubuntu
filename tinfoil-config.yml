@@ -1,8 +1,9 @@
 # An Ubuntu workspace with measured CVM-wide administrator access. Connect with
 # `tinfoil ssh`, which tunnels over the shim's attested TLS.
 cvm-version: 0.14.8
-cpus: 8
-memory: 32768
+cpus: 32
+memory: 524288
+gpus: 8
 
 networks:
   dev:
@@ -17,9 +18,12 @@ volumes:
 containers:
   - name: "workspace"
     image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
-    restart: always
+    runtime: nvidia
+    gpus: all
+    restart: on-failure
     cvm_admin: true
-    stop_timeout: 30
+    stop_signal: SIGRTMIN+3
+    stop_timeout: 120
     networks: [dev]
     volumes: [workspace:/mnt/disk]
 
@@ -46,10 +50,7 @@ containers:
       interval: 5s
       timeout: 5s
       retries: 12
-      start_period: 2s
-
-    # For a GPU box add `runtime: nvidia` and `gpus: 1`, and set the top-level
-    # `gpus:` to the attested count.
+      start_period: 120s
 
 shim:
   # Unused: this workspace serves no HTTP API, but the field has to be set.
