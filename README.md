@@ -21,16 +21,32 @@ This tunnels over the enclave's attested TLS connection, so verifying the
 enclave and connecting to it are the same step. `scp`, `sftp`, `rsync` and
 `ssh -L` port forwarding all work, and it drops you at a normal bash prompt.
 
+### Without the tunnel
+
+Set `SSH_TUNNEL_TARGET` to `user@host` of a box the workspace can reach, with
+`SSH_TUNNEL_KEY` a client key that box accepts and `SSH_TUNNEL_HOST_KEY` its
+public host key, and the workspace keeps a reverse tunnel open that publishes
+its sshd on that box at `127.0.0.1:2022` (`SSH_TUNNEL_PORT` to change). Only
+the host-key fingerprint then vouches for the workspace, so restrict the key
+on the box: `restrict,port-forwarding,permitlisten="127.0.0.1:2022"`.
+
 ## Configure
 
-Set two variables on the deployment: `SSH_AUTHORIZED_KEYS`, your public key,
-which is required — without it the workspace exits rather than coming up
-healthy; and optionally `SSH_HOST_KEY`, an OpenSSH PEM private key, for a host
-identity that stays the same across reboots.
+Set `SSH_KEYS` on the deployment to your public key, or several public keys
+separated by newlines. The workspace exits if none is usable.
 
-Set one secret, `WORKSPACE_VOLUME_KEY`: 64 random bytes, base64-encoded
+Set two secrets. `SSH_HOST_KEY` is an OpenSSH private key and becomes the
+SSH host identity, the same one across reboots:
+
+    ssh-keygen -t ed25519 -N '' -f hostkey -C ''
+    tinctl secret create SSH_HOST_KEY --value-file hostkey
+
+`WORKSPACE_VOLUME_KEY` is 64 random bytes, base64-encoded
 (`head -c 64 /dev/urandom | base64 -w0`). It is the only key to the disk;
 lose it and the data is unrecoverable.
+
+Both are declared secrets, so an unset one fails the boot instead of quietly
+starting a workspace with an improvised identity or an unopenable disk.
 
 To resize the box or attach a GPU, edit `cpus`, `memory` and `gpus` in
 `tinfoil-config.yml`, and add `runtime: nvidia` to the container.
@@ -62,10 +78,9 @@ sits beside that tree, not inside it.
 The entrypoint waits for Docker before starting SSH. If either daemon exits,
 it terminates the other and exits; the measured restart policy restarts the
 workspace, and Docker gets 10 seconds to stop nested containers within the
-outer 30-second stop timeout. Stopping the deployment is a hard power-off with
-no such drain: the kernel flushes the disk on its own schedule, so writes from
-the last few seconds before a stop can be lost. `docker-init` reaps orphaned
-processes.
+outer 30-second stop timeout. The disk syncs every five seconds. Stopping the
+deployment is a hard power-off and may lose writes since the last sync.
+`docker-init` reaps orphaned processes.
 
 ## Trust model
 
@@ -76,20 +91,6 @@ namespaces, but customers still have CVM-wide authority. Do not put other tenant
 or secrets they must not access in the same CVM. Kernel module loading stays
 locked and the verified CVM root disk stays read-only.
 
-SSH credentials retain the existing external-variable flow: `cvm_admin` does not
-attest those values or add sealed SSH-key provisioning. Supply SSH authorization
-from an owner-controlled source before entrusting the workspace with secrets.
-
-## Runtime smoke test
-
-Run `tests/smoke.sh` inside a **fresh disposable CVM workspace**, against its
-inner daemon, not against your machine's Docker socket; the script is not in the
-image, so feed it over the tunnel: `tinfoil ssh workspace -- bash -s < tests/smoke.sh`.
-It checks root/NNP, locked modules, disk-backed storage, cgroup resource limits,
-privileged mounts, builds, DNS/Internet access, bind mounts, and nested port
-publishing. It leaves a web server at `127.0.0.1:8080` for the SSH-forwarding
-check above, and its images stay on the disk until you remove them.
-
-Also qualify daemon failure/restart and shutdown on the target CVM image; stock
-host DinD tests do not exercise the CVM's module lock or guest firewall. An
-authenticated `tinfoil ssh` test requires a valid inference API key.
+SSH authorization comes from the external `SSH_KEYS` variable. `cvm_admin` does
+not attest its value. Supply it from an owner-controlled source before entrusting
+the workspace with secrets.
