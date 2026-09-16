@@ -3,6 +3,7 @@
 cvm-version: 0.14.8
 cpus: 8
 memory: 32768
+gpus: 1
 
 networks:
   dev:
@@ -11,6 +12,8 @@ networks:
 containers:
   - name: "workspace"
     image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
+    runtime: nvidia
+    gpus: all
     restart: on-failure
     cvm_admin: true
     stop_signal: SIGRTMIN+3
@@ -23,7 +26,7 @@ containers:
 
     # Inline, so the authorized key is measured rather than set on the deployment.
     env:
-      - SSH_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH joe@corpy"
+      - SSH_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH"
 
     tmpfs:
       /run: "rw,nosuid,nodev,mode=755"
@@ -34,9 +37,6 @@ containers:
       timeout: 5s
       retries: 12
       start_period: 30s
-
-    # For a GPU box add `runtime: nvidia` and `gpus: all`, and set the top-level
-    # `gpus:` to the attested count.
 
 shim:
   # Unused: this workspace serves no HTTP API, but the field has to be set.

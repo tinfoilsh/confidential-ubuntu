@@ -24,6 +24,17 @@ boot() {
     unset SSH_KEYS
     umask 022
 
+    # Docker names the box after the container ID, which makes for an ugly
+    # shell prompt. systemd applies /etc/hostname at boot; the sethostname
+    # call covers the window before it gets there.
+    box_name=${WORKSPACE_HOSTNAME:-workspace}
+    printf '%s\n' "$box_name" > /etc/hostname
+    hostname "$box_name"
+
+    # The NVIDIA runtime mounts this boot's driver libraries into the image,
+    # after it was built, so the linker cache has to be rebuilt to find them.
+    ldconfig
+
     ssh-keygen -A
     exec /sbin/init
 }
