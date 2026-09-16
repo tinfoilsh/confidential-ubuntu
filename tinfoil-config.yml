@@ -13,7 +13,7 @@ volumes:
 
 containers:
   - name: "workspace"
-    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
+    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:38d643fa1aa53f36f6306aa67d5eedf836583ea7ef8de9a22dc5871b4cdd0f3f" # v0.5.0
     runtime: nvidia
     gpus: all
     restart: on-failure
