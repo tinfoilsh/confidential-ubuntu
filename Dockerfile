@@ -20,7 +20,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       rsync htop tmux openssh-server iproute2 procps \
       systemd systemd-sysv dbus dbus-user-session libpam-systemd \
       bash-completion locales dnsutils iputils-ping util-linux \
-      cryptsetup e2fsprogs \
     && locale-gen en_US.UTF-8 \
     && rm -f /usr/sbin/policy-rc.d \
     && rm -f /etc/ssh/ssh_host_* \
@@ -40,6 +39,6 @@ RUN systemctl disable ssh.socket \
     && touch /etc/machine-id \
     && ln -s /etc/machine-id /var/lib/dbus/machine-id
 
-EXPOSE 2222
+EXPOSE 22
 STOPSIGNAL SIGRTMIN+3
 ENTRYPOINT ["/entrypoint"]
