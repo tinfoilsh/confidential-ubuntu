@@ -5,7 +5,7 @@ over `tinfoil ssh`; nothing is exposed on the public internet.
 
 ## Deploy
 
-Run the **Tinfoil Release** workflow with a version (e.g. `v0.3.0`), then deploy
+Run the **Tinfoil Release** workflow with a version (e.g. `v0.3.1`), then deploy
 by repo + tag from the dashboard or:
 
     tinctl deploy tinfoilsh/confidential-ubuntu
