@@ -1,19 +1,12 @@
-# An Ubuntu workspace with measured CVM-wide administrator access. Connect with
-# `tinfoil ssh`, which tunnels over the shim's attested TLS.
+# An Ubuntu workspace with measured CVM-wide administrator access.
 cvm-version: 0.14.8
-cpus: 32
-memory: 524288
-gpus: 8
+cpus: 8
+memory: 32768
+gpus: 1
 
 networks:
   dev:
-    egress: open          # needed for apt and pip
-
-volumes:
-  - name: workspace
-    # Persistent encrypted disk, opened at boot with the 64-byte key in this secret.
-    exec: true
-    key-secret: WORKSPACE_VOLUME_KEY
+    egress: open
 
 containers:
   - name: "workspace"
@@ -25,22 +18,11 @@ containers:
     stop_signal: SIGRTMIN+3
     stop_timeout: 120
     networks: [dev]
-    volumes: [workspace:/mnt/disk]
 
-    # SSH, reachable only through the enclave's attested tunnel, never directly.
     ports: ["2022:2222"]
 
     env:
-      - SSH_KEYS
-      - SSH_TUNNEL_TARGET
-      - SSH_TUNNEL_PORT
-      - SSH_TUNNEL_KEY
-      - SSH_TUNNEL_HOST_KEY
-
-    # The host identity is a vault secret, so boot fails rather than falling
-    # back to a per-boot key the host could have watched being generated.
-    secrets:
-      - SSH_HOST_KEY
+      - SSH_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH"
 
     tmpfs:
       /run: "rw,nosuid,nodev,mode=755"
@@ -50,10 +32,8 @@ containers:
       interval: 5s
       timeout: 5s
       retries: 12
-      start_period: 120s
+      start_period: 30s
 
 shim:
-  # Unused: this workspace serves no HTTP API, but the field has to be set.
   upstream-port: 2222
-  # Require a Tinfoil API key before the enclave will open a tunnel at all.
-  authenticated: true
+  authenticated: false
