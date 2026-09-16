@@ -1,8 +1,8 @@
 # An Ubuntu workspace with measured CVM-wide administrator access.
 cvm-version: 0.14.8
-cpus: 8
-memory: 32768
-gpus: 1
+cpus: 120
+memory: 1048576
+gpus: 8
 
 networks:
   dev:
