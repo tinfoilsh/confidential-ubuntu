@@ -1,11 +1,7 @@
 # syntax=docker/dockerfile:1.6
 #
-# Confidential Ubuntu (bare SSH): a measured, CVM-admin interactive workspace.
+# Confidential Ubuntu: a measured, CVM-admin interactive workspace.
 # The base is digest-pinned for attestation.
-#
-# No persistent volume and no inner Docker daemon: this is a plain Ubuntu
-# systemd box you SSH into as root. cvm_admin supplies privileged root, so
-# storage can be set up by hand from inside (cryptsetup on a loop file).
 ARG BASE_IMAGE=docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
 
 FROM ${BASE_IMAGE}

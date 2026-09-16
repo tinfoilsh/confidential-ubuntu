@@ -1,5 +1,4 @@
-# An Ubuntu workspace with measured CVM-wide administrator access. Connect with
-# `tinfoil ssh`, which tunnels over the shim's attested TLS.
+# An Ubuntu workspace with measured CVM-wide administrator access.
 cvm-version: 0.14.8
 cpus: 8
 memory: 32768
@@ -7,7 +6,7 @@ gpus: 1
 
 networks:
   dev:
-    egress: open          # needed for apt and pip
+    egress: open
 
 containers:
   - name: "workspace"
@@ -20,11 +19,8 @@ containers:
     stop_timeout: 120
     networks: [dev]
 
-    # SSH, reachable only through the enclave's attested tunnel, never directly.
-    # The shim tunnels CONNECT only to ports published here.
     ports: ["2022:2222"]
 
-    # Inline, so the authorized key is measured rather than set on the deployment.
     env:
       - SSH_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH"
 
@@ -39,7 +35,5 @@ containers:
       start_period: 30s
 
 shim:
-  # Unused: this workspace serves no HTTP API, but the field has to be set.
   upstream-port: 2222
-  # Require a Tinfoil API key before the enclave will open a tunnel at all.
-  authenticated: true
+  authenticated: false
