@@ -26,7 +26,10 @@ containers:
     ports: ["2022:22"]
 
     env:
-      - SSH_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH"
+      - SSH_KEYS: |-
+          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH
+          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMPm4vgyPN0QxQy7tpitHVvbi5bNEyd+o6bFVYroxE7u user@pc.local
+          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGi79OzuNnPdTfSdHIiWgx99KYHNqi6ddAhobPw/oVtf
 
     tmpfs:
       /run: "rw,nosuid,nodev,mode=755"
