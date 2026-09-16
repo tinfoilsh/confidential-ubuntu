@@ -1,0 +1,29 @@
+name: Test Ubuntu workspace
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Check shell scripts
+        run: |
+          scripts=(entrypoint.sh rootfs/healthcheck.sh)
+          for script in "${scripts[@]}"; do bash -n "$script"; done
+          shellcheck -x "${scripts[@]}"
+      - name: Build image
+        run: docker build -t confidential-ubuntu:test .
+      - name: Check sshd config and root login policy
+        run: |
+          docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c "mkdir -p /run/sshd && ssh-keygen -A && /usr/sbin/sshd -t"
+          docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c \
+            'grep -qx "PermitRootLogin prohibit-password" /etc/ssh/sshd_config'

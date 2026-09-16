@@ -1,46 +1,31 @@
 #!/bin/bash
-# Confidential Ubuntu workspace: install credentials, then hand off to dropbear.
+# Install the deployed SSH key for root, then hand off to systemd.
 #
-# SSH_AUTHORIZED_KEYS (required) public keys, newline separated. Supplied per
-#                     deployment through the external config.
-# SSH_HOST_KEY        (optional) an OpenSSH PEM private key, for a stable host
-#                     identity. Omitted, one is generated each boot.
-# SSH_PORT            (optional) defaults to 2222. Below 1024 would need
-#                     CAP_NET_BIND_SERVICE, which the CVM drops.
+# SSH_KEYS is set inline in tinfoil-config.yml, so the authorized key is
+# measured and covered by the attestation rather than supplied at deploy time.
+#
+# sshd needs a host key to start, so one is generated on each boot. Nothing
+# checks it: `tinfoil ssh` verifies the enclave's attestation when it opens the
+# tunnel, then runs ssh with StrictHostKeyChecking=no, because the attested
+# channel has already pinned the peer.
 set -euo pipefail
 
-port="${SSH_PORT:-2222}"
-run_dir=/run/ssh
-key_file="$run_dir/dropbear_ed25519_host_key"
+fail() { printf 'confidential-ubuntu: %s\n' "$*" >&2; exit 1; }
 
-mkdir -p "$run_dir"
-chmod 0700 "$run_dir"
+boot() {
+    [[ $# == 0 ]] || { printf 'usage: /entrypoint\n' >&2; exit 2; }
+    [[ $$ == 1 ]] || fail 'the entrypoint must run as PID 1'
 
-# Fail loudly rather than boot a workspace nobody can reach: given a malformed
-# key dropbear starts happily and just turns everyone away.
-printf '%s\n' "${SSH_AUTHORIZED_KEYS:-}" | grep -qE '^(ssh-(ed25519|rsa) |ecdsa-sha2-|sk-)' || {
-    echo "confidential-ubuntu: SSH_AUTHORIZED_KEYS has no usable public key" >&2
-    exit 1
+    umask 077
+    install -d -m 0700 /root/.ssh
+    printf '%s\n' "${SSH_KEYS:?SSH_KEYS is required}" > /root/.ssh/authorized_keys
+    chmod 0600 /root/.ssh/authorized_keys
+    ssh-keygen -lf /root/.ssh/authorized_keys >/dev/null 2>&1 || fail 'SSH_KEYS has no usable public key'
+    unset SSH_KEYS
+    umask 022
+
+    ssh-keygen -A
+    exec /sbin/init
 }
-printf '%s\n' "$SSH_AUTHORIZED_KEYS" > "$run_dir/authorized_keys"
-chmod 0600 "$run_dir/authorized_keys"
 
-if [ -n "${SSH_HOST_KEY:-}" ]; then
-    printf '%s\n' "$SSH_HOST_KEY" > "$run_dir/hostkey.pem"
-    chmod 0600 "$run_dir/hostkey.pem"
-    /usr/local/bin/dropbearconvert openssh dropbear "$run_dir/hostkey.pem" "$key_file" >/dev/null 2>&1 || {
-        echo "confidential-ubuntu: SSH_HOST_KEY is not an OpenSSH PEM private key" >&2
-        exit 1
-    }
-    rm -f "$run_dir/hostkey.pem"
-else
-    /usr/local/bin/dropbearkey -t ed25519 -f "$key_file" >/dev/null 2>&1
-fi
-chmod 0600 "$key_file"
-
-# Logged so an ephemeral host key can still be pinned by a client that has just
-# verified the enclave's attestation.
-/usr/local/bin/dropbearkey -y -f "$key_file" | sed -n 's/^Fingerprint: /confidential-ubuntu: host key /p'
-
-# -s and -g disable password authentication entirely, including for root.
-exec /usr/local/bin/dropbear -F -E -s -g -r "$key_file" -p "$port"
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then boot "$@"; fi

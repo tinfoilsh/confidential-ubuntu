@@ -1,31 +1,17 @@
 # syntax=docker/dockerfile:1.6
 #
-# Confidential Ubuntu: an interactive workspace that runs as an ordinary
-# measured workload. Bases are digest-pinned for attestation.
+# Confidential Ubuntu (bare SSH): a measured, CVM-admin interactive workspace.
+# The base is digest-pinned for attestation.
 #
-# Every CVM workload runs with cap_drop ALL and no-new-privileges, and the
-# cap_add allowlist is only IPC_LOCK / NET_BIND_SERVICE / SYS_NICE. Hence:
-# the login server listens on 2222 (port 22 would need CAP_NET_BIND_SERVICE),
-# apt's privilege drop is disabled (it needs CAP_SETGID), and apt's cache is
-# chowned to root at build time (without CAP_DAC_OVERRIDE root no longer
-# bypasses the _apt-owned 0700 directories).
-#
-# Dropbear 2025.89 comes from the debug-toolbox image, already qualified
-# against this policy. Ubuntu's own dropbear dies in initgroups(), and stock
-# OpenSSH needs SETUID + SETGID + SYS_CHROOT.
-ARG TOOLBOX_IMAGE=ghcr.io/tinfoilsh/tinfoil-debug-toolbox@sha256:7c6166c7db950757263ad955a76049630e0e8f9663cee01479b9b4e7a24ce7e6
+# No persistent volume and no inner Docker daemon: this is a plain Ubuntu
+# systemd box you SSH into as root. cvm_admin supplies privileged root, so
+# storage can be set up by hand from inside (cryptsetup on a loop file).
 ARG BASE_IMAGE=docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
 
-FROM ${TOOLBOX_IMAGE} AS toolbox
-
 FROM ${BASE_IMAGE}
-ARG VERSION=dev
-LABEL org.opencontainers.image.title="confidential-ubuntu" \
-      org.opencontainers.image.description="Ubuntu workspace for a Tinfoil confidential VM" \
-      org.opencontainers.image.version="${VERSION}"
-ENV DEBIAN_FRONTEND=noninteractive
+ENV container=docker LANG=en_US.UTF-8
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates \
       pciutils \
       curl \
@@ -35,30 +21,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
       python3-venv \
       python3-pip \
-      rsync htop tmux openssh-client \
+      rsync htop tmux openssh-server iproute2 procps \
+      systemd systemd-sysv dbus dbus-user-session libpam-systemd \
+      bash-completion locales dnsutils iputils-ping util-linux \
+      cryptsetup e2fsprogs \
+    && locale-gen en_US.UTF-8 \
+    && rm -f /usr/sbin/policy-rc.d \
+    && rm -f /etc/ssh/ssh_host_* \
     && rm -rf /var/lib/apt/lists/*
 
-# See note 2 and 3 above: without these the workspace cannot install anything.
-RUN printf 'APT::Sandbox::User "root";\n' > /etc/apt/apt.conf.d/99-tinfoil-no-sandbox && \
-    chown -R root:root /var/cache/apt /var/lib/apt /var/log/apt && \
-    chmod -R u+rwX /var/cache/apt /var/lib/apt /var/log/apt
+COPY --chmod=0755 entrypoint.sh /entrypoint
+COPY rootfs/ /
+RUN for script in /entrypoint /healthcheck.sh; do bash -n "$script" || exit 1; done
 
-COPY --from=toolbox /usr/local/bin/dropbear        /usr/local/bin/dropbear
-COPY --from=toolbox /usr/local/bin/dropbearkey     /usr/local/bin/dropbearkey
-COPY --from=toolbox /usr/local/bin/dropbearconvert /usr/local/bin/dropbearconvert
-COPY --from=toolbox /usr/local/bin/scp             /usr/local/bin/scp
-COPY --from=toolbox /usr/local/bin/sftp-server     /usr/local/bin/sftp-server
-
-# Dropbear looks for the sftp subsystem at its compiled-in path.
-RUN mkdir -p /usr/libexec && ln -sf /usr/local/bin/sftp-server /usr/libexec/sftp-server
-
-# ~/.ssh is a symlink into the tmpfs so the image also runs with a read-only
-# rootfs. /run is masked by the runtime tmpfs, so the entrypoint recreates it.
-RUN rm -rf /root/.ssh && ln -s /run/ssh /root/.ssh
-
-COPY entrypoint.sh /entrypoint.sh
-COPY healthcheck.sh /healthcheck.sh
-RUN chmod 0755 /entrypoint.sh /healthcheck.sh
+RUN systemctl disable ssh.socket \
+    && systemctl enable ssh.service \
+    && systemctl mask systemd-udevd.service systemd-udevd-control.socket systemd-udevd-kernel.socket \
+         systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service \
+         systemd-resolved.service systemd-timesyncd.service console-getty.service \
+    && systemctl set-default multi-user.target \
+    && rm -f /etc/machine-id /var/lib/dbus/machine-id \
+    && touch /etc/machine-id \
+    && ln -s /etc/machine-id /var/lib/dbus/machine-id
 
 EXPOSE 2222
-ENTRYPOINT ["/entrypoint.sh"]
+STOPSIGNAL SIGRTMIN+3
+ENTRYPOINT ["/entrypoint"]

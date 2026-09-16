@@ -1,0 +1,9 @@
+Port 2222
+Include /etc/ssh/sshd_config.d/*.conf
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp internal-sftp

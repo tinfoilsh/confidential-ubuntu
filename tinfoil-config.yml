@@ -1,6 +1,6 @@
-# An Ubuntu workspace that runs as an ordinary measured workload. Connect with
+# An Ubuntu workspace with measured CVM-wide administrator access. Connect with
 # `tinfoil ssh`, which tunnels over the shim's attested TLS.
-cvm-version: 0.11.0
+cvm-version: 0.14.8
 cpus: 8
 memory: 32768
 
@@ -11,18 +11,19 @@ networks:
 containers:
   - name: "workspace"
     image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
-    restart: always
+    restart: on-failure
+    cvm_admin: true
+    stop_signal: SIGRTMIN+3
+    stop_timeout: 120
     networks: [dev]
 
     # SSH, reachable only through the enclave's attested tunnel, never directly.
+    # The shim tunnels CONNECT only to ports published here.
     ports: ["2022:2222"]
 
-    # A workspace needs a writable rootfs for apt; the default is read-only.
-    read_only: false
-
+    # Inline, so the authorized key is measured rather than set on the deployment.
     env:
-      - SSH_AUTHORIZED_KEYS
-      - SSH_HOST_KEY
+      - SSH_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH joe@corpy"
 
     tmpfs:
       /run: "rw,nosuid,nodev,mode=755"
@@ -30,11 +31,11 @@ containers:
     healthcheck:
       test: ["CMD", "/healthcheck.sh"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 12
-      start_period: 2s
+      start_period: 30s
 
-    # For a GPU box add `runtime: nvidia` and `gpus: 1`, and set the top-level
+    # For a GPU box add `runtime: nvidia` and `gpus: all`, and set the top-level
     # `gpus:` to the attested count.
 
 shim:
