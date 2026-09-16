@@ -23,13 +23,11 @@ This tunnels over the enclave's attested TLS connection, so verifying the
 enclave and connecting to it are the same step. `scp`, `sftp`, `rsync` and
 `ssh -L` port forwarding all work.
 
-[`ONBOARDING.md`](ONBOARDING.md) has the full CLI walkthrough: deploying to a
-named host, checking the GPU, and setting up an encrypted disk.
-
 ## Good to know
 
 Storage is not persistent — the workspace lives on the CVM's ramdisk, so push
-anything you care about to git or object storage before it reboots.
+anything you care about to git or object storage before it reboots. The writable
+root is a 4 GB overlay, much smaller than the box's RAM.
 
 `cvm_admin` gives privileged root over the whole CVM rather than an extra
 sandbox: one kernel, one tenant. Kernel module loading stays locked and the
