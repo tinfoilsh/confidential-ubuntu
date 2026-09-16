@@ -1,6 +1,6 @@
 cvm-version: 0.14.8
-cpus: 64
-memory: 524288
+cpus: 120
+memory: 1048576
 gpus: 8
 
 networks:
