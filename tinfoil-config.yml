@@ -10,7 +10,7 @@ networks:
 
 containers:
   - name: "workspace"
-    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000" # rewritten at release
+    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:e0cd50c669d3f8ee969598bae711bf19a192d4b26159b08fddb36b0947297886" # v0.2.0
     restart: on-failure
     cvm_admin: true
     stop_signal: SIGRTMIN+3
