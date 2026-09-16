@@ -1,0 +1,29 @@
+#!/usr/bin/python3
+import base64, hashlib, json, os, socket, subprocess, sys
+
+DISK = "/mnt/disk"
+CONTROL = "/run/tinfoil/volumes/workspace/control.sock"
+PERSIST = ["/root"]
+MAX_REPLY_BYTES = 256
+
+
+def ask(op, key):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as s:
+        s.connect(CONTROL)
+        s.send(json.dumps({"op": op, "key": base64.b64encode(key).decode()}).encode())
+        return json.loads(s.recv(MAX_REPLY_BYTES))["status"]
+
+
+if os.path.exists(CONTROL):
+    key = hashlib.sha512(sys.stdin.buffer.read()).digest()
+    status = ask("initialize", key)
+    if status == "rejected":
+        status = ask("unlock", key)
+    if status != "ok":
+        sys.exit(f"workspace-unlock: volume worker answered {status}")
+    print("Volume unlocked.")
+for path in PERSIST:
+    if not os.path.exists(DISK + path):
+        subprocess.run(["cp", "-a", "--parents", path, DISK], check=True)
+    if not os.path.ismount(path):
+        subprocess.run(["mount", "--bind", DISK + path, path], check=True)

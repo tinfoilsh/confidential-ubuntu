@@ -20,6 +20,7 @@ jobs:
           scripts=(entrypoint.sh rootfs/healthcheck.sh)
           for script in "${scripts[@]}"; do bash -n "$script"; done
           shellcheck -x "${scripts[@]}"
+          python3 -m py_compile rootfs/usr/local/bin/workspace-unlock
       - name: Build image
         run: docker build -t confidential-ubuntu:test .
       - name: Check sshd config and root login policy

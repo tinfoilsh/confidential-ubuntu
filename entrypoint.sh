@@ -12,10 +12,8 @@ boot() {
     [[ $$ == 1 ]] || fail 'the entrypoint must run as PID 1'
 
     umask 077
-    install -d -m 0700 /root/.ssh
-    printf '%s\n' "${SSH_KEYS:?SSH_KEYS is required}" > /root/.ssh/authorized_keys
-    chmod 0600 /root/.ssh/authorized_keys
-    ssh-keygen -lf /root/.ssh/authorized_keys >/dev/null 2>&1 || fail 'SSH_KEYS has no usable public key'
+    printf '%s\n' "${SSH_KEYS:?SSH_KEYS is required}" > /run/authorized_keys
+    ssh-keygen -lf /run/authorized_keys >/dev/null 2>&1 || fail 'SSH_KEYS has no usable public key'
     unset SSH_KEYS
     umask 022
 

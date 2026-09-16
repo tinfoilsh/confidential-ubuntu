@@ -1,4 +1,3 @@
-# An Ubuntu workspace with measured CVM-wide administrator access.
 cvm-version: 0.14.8
 cpus: 120
 memory: 1048576
@@ -7,6 +6,10 @@ gpus: 8
 networks:
   dev:
     egress: open
+
+volumes:
+  - name: workspace
+    exec: true
 
 containers:
   - name: "workspace"
@@ -18,8 +21,9 @@ containers:
     stop_signal: SIGRTMIN+3
     stop_timeout: 120
     networks: [dev]
+    volumes: [workspace:/mnt/disk]
 
-    ports: ["2022:2222"]
+    ports: ["2022:22"]
 
     env:
       - SSH_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH"

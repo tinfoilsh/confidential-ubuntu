@@ -1,5 +1,5 @@
-Port 2222
 Include /etc/ssh/sshd_config.d/*.conf
+AuthorizedKeysFile /run/authorized_keys /root/.ssh/authorized_keys
 PermitRootLogin prohibit-password
 PasswordAuthentication no
 KbdInteractiveAuthentication no
