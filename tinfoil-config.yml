@@ -1,6 +1,6 @@
 cvm-version: 0.14.8
 cpus: 64
-memory: 1048576
+memory: 524288
 gpus: 8
 
 networks:
@@ -42,5 +42,5 @@ containers:
       start_period: 30s
 
 shim:
-  upstream-port: 2222
+  upstream-port: 22
   authenticated: false
