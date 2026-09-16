@@ -23,7 +23,7 @@ containers:
     networks: [dev]
     volumes: [workspace:/mnt/disk]
 
-    ports: ["2022:22"]
+    ports: ["22:22"]
 
     env:
       - SSH_KEYS: |-
