@@ -27,10 +27,8 @@ containers:
 
     env:
       - SSH_KEYS: |-
-          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJaKZDsrzaJsxvNLjiy/7GdrO2M3J1EVZC4/azKTbOxH
-          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMPm4vgyPN0QxQy7tpitHVvbi5bNEyd+o6bFVYroxE7u user@pc.local
-          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGi79OzuNnPdTfSdHIiWgx99KYHNqi6ddAhobPw/oVtf
           ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKcW8gy3qDjGP3iBIggbIeiUl47+tm3zwWcCi0ww/QZG
+          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHqerhhrFex4XpSs4atO8I/I6G2TfhmWZOeK7SPuGhuP
 
     tmpfs:
       /run: "rw,nosuid,nodev,mode=755"
