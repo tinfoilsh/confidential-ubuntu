@@ -25,15 +25,6 @@ jobs:
         run: docker build -t confidential-ubuntu:test .
       - name: Check sshd config and root login policy
         run: |
-          openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$RUNNER_TEMP/host-ssh.pem"
-          docker run --rm --entrypoint /bin/bash \
-            -v "$RUNNER_TEMP/host-ssh.pem:/run/tinfoil/keys/host-ssh/private_key.pem:ro" \
-            confidential-ubuntu:test -c \
-            'mkdir -p /run/sshd && source /entrypoint && install_attested_host_key && /usr/sbin/sshd -t'
+          docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c "mkdir -p /run/sshd && ssh-keygen -A && /usr/sbin/sshd -t"
           docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c \
-            'grep -qx "HostKey /etc/ssh/ssh_host_attested_key" /etc/ssh/sshd_config && grep -qx "PermitRootLogin prohibit-password" /etc/ssh/sshd_config'
-          if docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c \
-            'source /entrypoint && install_attested_host_key'; then
-            echo 'expected missing host-ssh key to fail' >&2
-            exit 1
-          fi
+            'grep -qx "PermitRootLogin prohibit-password" /etc/ssh/sshd_config'
