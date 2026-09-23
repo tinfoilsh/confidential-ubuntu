@@ -1,4 +1,5 @@
 Include /etc/ssh/sshd_config.d/*.conf
+HostKey /etc/ssh/ssh_host_attested_key
 AuthorizedKeysFile /run/authorized_keys /root/.ssh/authorized_keys
 PermitRootLogin prohibit-password
 PasswordAuthentication no

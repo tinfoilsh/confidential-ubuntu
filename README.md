@@ -1,7 +1,7 @@
 # Confidential Ubuntu
 
 A bare Ubuntu workspace that runs inside a confidential VM. You log in as root
-over `tinfoil ssh`.
+over native SSH after pinning the attested host key.
 
 ## Deploy
 
@@ -15,15 +15,17 @@ by repo + tag from the dashboard or:
 
 ## Connect
 
-    export TINFOIL_TUNNEL_API_KEY=...
-    tinfoil ssh workspace
+Requires [Tinfoil CLI](https://github.com/tinfoilsh/tinfoil-cli/releases) v0.18.8 or later:
 
-This tunnels over the enclave's attested TLS connection, so verifying the
-enclave and connecting to it are the same step.
+    tinfoil attest-ssh my-cvm --install
+    ssh my-cvm
+
+`attest-ssh` verifies the enclave and pins the `host-ssh` key. After a full
+enclave reboot the host key rotates; rerun `--install` before connecting again.
 
 ## Unlock
 
 A volume can be unlocked from within the CVM by sending it the volume key over SSH:
 
     head -c 64 /dev/urandom > workspace.key    # keep it; losing it loses the data
-    tinfoil ssh workspace -- workspace-unlock < workspace.key
+    ssh my-cvm workspace-unlock < workspace.key

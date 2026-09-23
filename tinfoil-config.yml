@@ -1,7 +1,14 @@
-cvm-version: 0.14.8
+cvm-version: 0.14.10
 cpus: 120
 memory: 1048576
 gpus: 8
+
+cvm-network:
+  inbound-ports: [22]
+
+attested-keys:
+  - id: host-ssh
+    key: ecdsa-p256
 
 networks:
   dev:
@@ -22,6 +29,7 @@ containers:
     stop_timeout: 120
     networks: [dev]
     volumes: [workspace:/mnt/disk]
+    keys: [host-ssh]
 
     ports: ["22:22"]
 
