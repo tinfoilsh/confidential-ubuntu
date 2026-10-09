@@ -23,7 +23,11 @@ enclave and connecting to it are the same step.
 
 ## Unlock
 
-A volume can be unlocked from within the CVM by sending it the volume key over SSH:
+An existing legacy workspace volume can be unlocked from within the CVM by
+sending its original key over SSH:
 
-    head -c 64 /dev/urandom > workspace.key    # keep it; losing it loses the data
     tinfoil ssh workspace -- workspace-unlock < workspace.key
+
+`workspace-unlock` requires cvmimage v0.14.14 and uses the legacy format 1 unlock
+request, preserving the original SHA-512 key derivation. It does not initialize
+blank disks or migrate existing volumes to the Argon2id format.
