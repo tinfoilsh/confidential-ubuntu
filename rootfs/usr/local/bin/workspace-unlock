@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import base64, hashlib, json, os, socket, subprocess, sys
+import hashlib, os, socket, subprocess, sys
 
 DISK = "/mnt/disk"
 CONTROL = "/run/tinfoil/volumes/workspace/control.sock"
@@ -7,18 +7,17 @@ PERSIST = ["/root"]
 MAX_REPLY_BYTES = 256
 
 
-def ask(op, key):
+def unlock(key):
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as s:
         s.connect(CONTROL)
-        s.send(json.dumps({"op": op, "key": base64.b64encode(key).decode()}).encode())
-        return json.loads(s.recv(MAX_REPLY_BYTES))["status"]
+        # Format 1 unlocks existing HKDF volumes; it cannot initialize a disk.
+        s.sendall(b"\x01u" + key)
+        return s.recv(MAX_REPLY_BYTES).decode()
 
 
 if os.path.exists(CONTROL):
     key = hashlib.sha512(sys.stdin.buffer.read()).digest()
-    status = ask("initialize", key)
-    if status == "rejected":
-        status = ask("unlock", key)
+    status = unlock(key)
     if status != "ok":
         sys.exit(f"workspace-unlock: volume worker answered {status}")
     print("Volume unlocked.")
