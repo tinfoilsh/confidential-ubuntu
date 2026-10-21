@@ -8,7 +8,7 @@ FROM ${BASE_IMAGE}
 ENV container=docker LANG=en_US.UTF-8
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ca-certificates \
+      ca-certificates=20260816ubuntu0.24.04.1 \
       pciutils \
       curl \
       git \
