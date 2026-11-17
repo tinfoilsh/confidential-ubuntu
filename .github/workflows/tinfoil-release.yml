@@ -1,9 +1,8 @@
-# Tinfoil Containers release workflow (phase 1 — initiate a release).
+# Tinfoil Containers image release workflow.
 #
 # Trigger this workflow from a branch via "Run workflow" and provide the
-# version. It builds the image, updates tinfoil-config.yml, creates the release
-# tag, and then dispatches phase 2 in `tinfoil-release-publish.yml` against the
-# new tag to attest the image and publish the GitHub release.
+# version. It builds and publishes the image, then creates a source
+# release containing local config examples pinned to the image digest.
 
 name: Tinfoil Release
 
@@ -37,9 +36,18 @@ jobs:
 
       - name: Check if version tag already exists
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
         run: |
-          if git ls-remote --tags origin "refs/tags/$VERSION" | grep -q .; then
+          VERSION_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          if [[ ! "$VERSION" =~ $VERSION_PATTERN ]]; then
+            echo "::error::Version must have the form vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          tag_exists=$(gh api "repos/$GH_REPO/git/matching-refs/tags/$VERSION" \
+            --jq 'any(.[]; .ref == ("refs/tags/" + env.VERSION))')
+          if [[ "$tag_exists" == true ]]; then
             echo "::error::Tag $VERSION already exists"
             exit 1
           fi
@@ -71,35 +79,64 @@ jobs:
           SOURCE_DATE_EPOCH: 0
         with:
           context: .
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ inputs.version }}
 
-  prepare-release:
+  release:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # update-container-action pushes the release tag
-      pull-requests: write  # required by update-container-action
-      actions: write        # dispatch tinfoil-release-publish.yml on the new tag
+      contents: write       # create the source tag and release
 
     steps:
-      - name: Update tinfoil-config.yml and create the release tag
-        uses: tinfoilsh/update-container-action@5e0a3789316941664cee055706799114e0180565 # v0.6.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
-          version: ${{ inputs.version }}
-          source-sha: ${{ github.sha }}
-          update-config: true
-          image-refs: |
-            ghcr.io/${{ github.repository }}@${{ needs.build.outputs.digest }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Dispatch the publish workflow on the new tag
+          persist-credentials: false
+      - name: Publish the image digest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
         run: |
-          gh workflow run tinfoil-release-publish.yml --ref "$VERSION"
+          sed -i "s|^    image: .*|    image: \"$IMAGE@$DIGEST\"|" tinfoil-config*.yaml.example
+          printf 'Image: %s@%s\n' "$IMAGE" "$DIGEST" > release-notes.md
+          gh release create "$VERSION" tinfoil-config*.yaml.example \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes-file release-notes.md
+
+  update-example:
+    needs: [build, release]
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Pin the examples to the published image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          for example in tinfoil-config*.yaml.example; do
+            sed -i "s|^    image: .*|    image: \"$IMAGE@$DIGEST\"|" "$example"
+            if git diff --quiet -- "$example"; then
+              continue
+            fi
+            gh api --method PUT "repos/$GH_REPO/contents/$example" \
+              -f "branch=$RELEASE_BRANCH" \
+              -f "sha=$(git rev-parse "HEAD:$example")" \
+              -f "content=$(base64 -w0 "$example")" \
+              -f "message=chore: pin the sandbox image to $VERSION" \
+              --silent
+          done
