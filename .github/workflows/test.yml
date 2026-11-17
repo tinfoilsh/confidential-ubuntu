@@ -36,6 +36,9 @@ jobs:
             /usr/sbin/sshd -t
             if (SSH_KEYS= configure); then exit 1; fi
             if (SSH_KEYS=invalid configure); then exit 1; fi
+            test ! -e "$TELEPORT_CONFIG"
+            TELEPORT_PROXY=example.teleport.sh:443 configure
+            grep -Fx "  proxy_server: \"example.teleport.sh:443\"" "$TELEPORT_CONFIG"
           '
           docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c \
             'grep -qx "PermitRootLogin prohibit-password" /etc/ssh/sshd_config'

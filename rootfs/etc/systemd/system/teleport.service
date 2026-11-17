@@ -1,0 +1,13 @@
+[Unit]
+Description=Teleport agent
+After=network-online.target
+# The entrypoint writes this file only when the config names a Teleport proxy.
+ConditionPathExists=/etc/teleport.yaml
+
+[Service]
+ExecStart=/usr/local/bin/teleport start --config=/etc/teleport.yaml --token=/run/teleport-token
+Restart=always
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
