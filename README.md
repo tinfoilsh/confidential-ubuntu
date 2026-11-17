@@ -69,5 +69,5 @@ Node state is kept in memory, so the workspace joins again after every reboot.
 ## Release
 
 Run the **Tinfoil Release** workflow with a new `vMAJOR.MINOR.PATCH` version.
-It builds and pushes the image, publishes a release containing both examples
-pinned to that image's digest, and commits the same pin to the branch.
+It builds and pushes the image and publishes a release containing both examples
+pinned to that image's digest. The examples in the repository keep `image: null`.
