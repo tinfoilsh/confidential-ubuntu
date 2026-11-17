@@ -1,24 +1,32 @@
 #!/usr/bin/python3
-import base64, hashlib, json, os, socket, subprocess, sys
+import hashlib, os, socket, subprocess, sys
 
 DISK = "/mnt/disk"
 CONTROL = "/run/tinfoil/volumes/workspace/control.sock"
 PERSIST = ["/root"]
 MAX_REPLY_BYTES = 256
+FORMAT = b"\x02"
+# Volumes created by earlier releases use this format and a hashed key.
+LEGACY_FORMAT = b"\x01"
+INITIALIZE = b"i"
+UNLOCK = b"u"
 
 
-def ask(op, key):
+def ask(version, op, key):
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as s:
         s.connect(CONTROL)
-        s.send(json.dumps({"op": op, "key": base64.b64encode(key).decode()}).encode())
-        return json.loads(s.recv(MAX_REPLY_BYTES))["status"]
+        s.sendall(version + op + key)
+        return s.recv(MAX_REPLY_BYTES).decode("ascii")
 
 
 if os.path.exists(CONTROL):
-    key = hashlib.sha512(sys.stdin.buffer.read()).digest()
-    status = ask("initialize", key)
+    key = sys.stdin.buffer.read()
+    # The worker formats only a blank volume and rejects initializing any other.
+    status = ask(FORMAT, INITIALIZE, key)
     if status == "rejected":
-        status = ask("unlock", key)
+        status = ask(FORMAT, UNLOCK, key)
+    if status == "failed":
+        status = ask(LEGACY_FORMAT, UNLOCK, hashlib.sha512(key).digest())
     if status != "ok":
         sys.exit(f"workspace-unlock: volume worker answered {status}")
     print("Volume unlocked.")

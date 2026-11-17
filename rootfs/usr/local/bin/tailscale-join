@@ -1,0 +1,20 @@
+#!/bin/bash
+# Join the tailnet with the auth key on stdin and the options from the config.
+#
+# The key is a secret, so it arrives over SSH after the enclave is verified
+# instead of through the config, which is public in the attestation.
+set -euo pipefail
+
+UP_ARGS_FILE=/run/tailscale-up-args
+KEY_FILE=/run/tailscale-auth-key
+
+[[ -e $UP_ARGS_FILE ]] || { echo 'tailscale-join: the config does not set TAILSCALE_UP_ARGS' >&2; exit 1; }
+read -ra up_args < "$UP_ARGS_FILE"
+
+umask 077
+trap 'rm -f "$KEY_FILE"' EXIT
+cat > "$KEY_FILE"
+[[ -s $KEY_FILE ]] || { echo 'tailscale-join: no auth key on stdin' >&2; exit 1; }
+
+tailscale up --auth-key="file:$KEY_FILE" "${up_args[@]}"
+tailscale status --self --peers=false

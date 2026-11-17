@@ -1,0 +1,22 @@
+[Unit]
+Description=Tailscale node agent
+Wants=network-pre.target
+After=network-pre.target
+# The entrypoint writes this file only when the config enables Tailscale.
+ConditionPathExists=/run/tailscale-up-args
+
+[Service]
+# Node state stays in memory, so every boot joins again after it is verified.
+ExecStart=/usr/local/bin/tailscaled --state=mem: --statedir=/var/lib/tailscale --socket=/run/tailscale/tailscaled.sock --port=41641
+ExecStopPost=/usr/local/bin/tailscaled --cleanup
+Restart=on-failure
+RuntimeDirectory=tailscale
+RuntimeDirectoryMode=0755
+StateDirectory=tailscale
+StateDirectoryMode=0700
+CacheDirectory=tailscale
+CacheDirectoryMode=0750
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

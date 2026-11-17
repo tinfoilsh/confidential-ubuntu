@@ -1,0 +1,52 @@
+cvm-version: "0.15.3-rc.1+gpu@sha256:1421cbb45dc428f6270d106d8eb68faab3ce7ca02ff2fbb2dc0968605004579f"
+cpus: 120
+memory: 1048576
+gpus: 8
+
+cvm-network:
+  inbound-ports: [22]
+
+attested-keys:
+  - id: host-ssh
+    key: ecdsa-p256
+  - id: teleport-join
+    key: ed25519
+
+networks:
+  dev:
+    egress: open
+
+volumes:
+  - name: workspace
+    exec: true
+
+containers:
+  - name: workspace
+    image: null # Set by each release to its image digest.
+    runtime: nvidia
+    gpus: all
+    restart: on-failure
+    cvm_admin: true
+    stop_timeout: 120
+    networks: [dev]
+    persistent_volumes: [workspace:/mnt/disk]
+    keys: [host-ssh, teleport-join]
+    ports: ["22:22"]
+    env:
+      - SSH_KEYS: null # Required: quoted public key, or a YAML block for multiple keys.
+      # Optional: quoted Teleport proxy address (host:port) to enroll with.
+      # - TELEPORT_PROXY: "teleport.example.com:443"
+      # Optional: quoted `tailscale up` options; setting them enables Tailscale.
+      # Send the auth key to `tailscale-join` over SSH, never through this file.
+      # - TAILSCALE_UP_ARGS: "--hostname=my-sandbox"
+    tmpfs:
+      /run: "rw,nosuid,nodev,mode=755"
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+shim:
+  upstream-port: 22

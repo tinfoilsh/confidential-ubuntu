@@ -1,0 +1,5 @@
+/configs/
+/tinfoil-policy.json
+/identity
+/id_ed25519
+/workspace.key

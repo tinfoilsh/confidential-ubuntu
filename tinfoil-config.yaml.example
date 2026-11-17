@@ -1,0 +1,44 @@
+cvm-version: "0.15.3-rc.1@sha256:ddd2e76a629df1bd4ec507441a387ac5db010ebc1bda3e372756e095df8692eb"
+cpus: 4
+memory: 8192
+
+cvm-network:
+  inbound-ports: [22]
+
+attested-keys:
+  - id: host-ssh
+    key: ecdsa-p256
+  - id: teleport-join
+    key: ed25519
+
+networks:
+  dev:
+    egress: open
+
+containers:
+  - name: workspace
+    image: null # Set by each release to its image digest.
+    restart: on-failure
+    cvm_admin: true
+    stop_timeout: 120
+    networks: [dev]
+    keys: [host-ssh, teleport-join]
+    ports: ["22:22"]
+    env:
+      - SSH_KEYS: null # Required: quoted public key, or a YAML block for multiple keys.
+      # Optional: quoted Teleport proxy address (host:port) to enroll with.
+      # - TELEPORT_PROXY: "teleport.example.com:443"
+      # Optional: quoted `tailscale up` options; setting them enables Tailscale.
+      # Send the auth key to `tailscale-join` over SSH, never through this file.
+      # - TAILSCALE_UP_ARGS: "--hostname=my-sandbox"
+    tmpfs:
+      /run: "rw,nosuid,nodev,mode=755"
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+shim:
+  upstream-port: 22
