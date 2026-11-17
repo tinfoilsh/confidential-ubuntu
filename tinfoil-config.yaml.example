@@ -10,6 +10,8 @@ attested-keys:
     key: ecdsa-p256
   - id: teleport-join
     key: ed25519
+  - id: workload-identity
+    key: ecdsa-p256
 
 networks:
   dev:
@@ -20,9 +22,10 @@ containers:
     image: null # Set by each release to its image digest.
     restart: on-failure
     cvm_admin: true
+    attestation: true
     stop_timeout: 120
     networks: [dev]
-    keys: [host-ssh, teleport-join]
+    keys: [host-ssh, teleport-join, workload-identity]
     ports: ["22:22"]
     env:
       - SSH_KEYS: null # Required: quoted public key, or a YAML block for multiple keys.
@@ -31,6 +34,10 @@ containers:
       # Optional: quoted `tailscale up` options; setting them enables Tailscale.
       # Send the auth key to `tailscale-join` over SSH, never through this file.
       # - TAILSCALE_UP_ARGS: "--hostname=my-sandbox"
+      # Optional: quoted https URL of the identity issuer you run. The workspace
+      # proves its attestation there to receive identity tokens, and joins the
+      # tailnet with one at boot when the Tailscale options include --client-id.
+      # - IDENTITY_ISSUER_URL: "https://id.example.com"
     tmpfs:
       /run: "rw,nosuid,nodev,mode=755"
     healthcheck:

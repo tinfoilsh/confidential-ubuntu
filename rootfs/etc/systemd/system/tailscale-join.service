@@ -1,0 +1,16 @@
+[Unit]
+Description=Join the tailnet with an attested identity token
+After=tailscaled.service network-online.target
+Requires=tailscaled.service
+# The entrypoint writes this file only when the config joins through the identity issuer.
+ConditionPathExists=/run/tailscale-federated
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/tailscale-join
+Restart=on-failure
+RestartSec=30s
+
+[Install]
+WantedBy=multi-user.target

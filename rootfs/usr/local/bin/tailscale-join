@@ -1,20 +1,34 @@
 #!/bin/bash
-# Join the tailnet with the auth key on stdin and the options from the config.
+# Join the tailnet with the options from the config.
 #
-# The key is a secret, so it arrives over SSH after the enclave is verified
-# instead of through the config, which is public in the attestation.
+# With a --client-id option the enclave proves itself to the config's identity
+# issuer and joins with the token it receives. Otherwise the auth key arrives on
+# stdin over SSH after the enclave is verified. Neither secret passes through
+# the config, which is public in the attestation.
 set -euo pipefail
 
 UP_ARGS_FILE=/run/tailscale-up-args
 KEY_FILE=/run/tailscale-auth-key
+CLIENT_ID_OPTION=--client-id=
+AUDIENCE_PREFIX=api.tailscale.com/
 
 [[ -e $UP_ARGS_FILE ]] || { echo 'tailscale-join: the config does not set TAILSCALE_UP_ARGS' >&2; exit 1; }
 read -ra up_args < "$UP_ARGS_FILE"
 
-umask 077
-trap 'rm -f "$KEY_FILE"' EXIT
-cat > "$KEY_FILE"
-[[ -s $KEY_FILE ]] || { echo 'tailscale-join: no auth key on stdin' >&2; exit 1; }
+client_id=
+for arg in "${up_args[@]}"; do
+    [[ $arg != "$CLIENT_ID_OPTION"* ]] || client_id=${arg#"$CLIENT_ID_OPTION"}
+done
 
-tailscale up --auth-key="file:$KEY_FILE" "${up_args[@]}"
+if [[ -n $client_id ]]; then
+    # The client ID may carry URL parameters, which are not part of the audience.
+    token=$(tinfoil-identity-token "$AUDIENCE_PREFIX${client_id%%\?*}")
+    tailscale up --id-token="$token" "${up_args[@]}"
+else
+    umask 077
+    trap 'rm -f "$KEY_FILE"' EXIT
+    cat > "$KEY_FILE"
+    [[ -s $KEY_FILE ]] || { echo 'tailscale-join: no auth key on stdin' >&2; exit 1; }
+    tailscale up --auth-key="file:$KEY_FILE" "${up_args[@]}"
+fi
 tailscale status --self --peers=false

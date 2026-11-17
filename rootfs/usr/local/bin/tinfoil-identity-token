@@ -1,0 +1,51 @@
+#!/bin/bash
+# Print an identity token for an audience, issued by the config's identity issuer.
+#
+# The issuer releases a token only for a fresh attestation presented over a
+# connection keyed by the attested identity key, so no credential is stored here.
+set -euo pipefail
+
+ISSUER_URL_FILE=/run/tinfoil-identity-issuer
+IDENTITY_KEY=/run/tinfoil/keys/workload-identity/private_key.pem
+ATTESTATION_SOCKET=/tinfoil/attestation.sock
+REQUEST_TIMEOUT_SECONDS=60
+CERTIFICATE_DAYS=1
+NONCE_PATTERN='^[0-9a-f]{64}$'
+
+fail() { printf 'tinfoil-identity-token: %s\n' "$*" >&2; exit 1; }
+
+[[ $# == 1 && -n $1 ]] || { printf 'usage: tinfoil-identity-token <audience>\n' >&2; exit 2; }
+[[ -e $ISSUER_URL_FILE ]] || fail 'the config does not set IDENTITY_ISSUER_URL'
+issuer=$(< "$ISSUER_URL_FILE")
+
+umask 077
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+openssl req -x509 -new -key "$IDENTITY_KEY" -subj /CN=workload-identity \
+    -days "$CERTIFICATE_DAYS" -out "$work/certificate.pem"
+
+request() {
+    curl -sS --fail-with-body --max-time "$REQUEST_TIMEOUT_SECONDS" \
+        --cert "$work/certificate.pem" --key "$IDENTITY_KEY" "$@"
+}
+
+field() { python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
+
+response=$(request -X POST "$issuer/challenge") || fail "the issuer refused a challenge: $response"
+nonce=$(field nonce <<< "$response")
+[[ $nonce =~ $NONCE_PATTERN ]] || fail 'the issuer returned a malformed challenge'
+
+curl -fsS --max-time "$REQUEST_TIMEOUT_SECONDS" --unix-socket "$ATTESTATION_SOCKET" \
+    -o "$work/document.json" "http://localhost/.well-known/tinfoil-attestation?nonce=$nonce"
+
+python3 -c '
+import json, sys
+nonce, audience, document, output = sys.argv[1:]
+with open(document) as source, open(output, "w") as target:
+    json.dump({"nonce": nonce, "audience": audience, "document": json.load(source)}, target)
+' "$nonce" "$1" "$work/document.json" "$work/request.json"
+
+response=$(request -X POST -H 'Content-Type: application/json' --data-binary "@$work/request.json" "$issuer/token") \
+    || fail "the issuer refused a token: $response"
+field token <<< "$response"

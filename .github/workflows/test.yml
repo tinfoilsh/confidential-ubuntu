@@ -17,7 +17,7 @@ jobs:
           persist-credentials: false
       - name: Check shell scripts
         run: |
-          scripts=(entrypoint.sh rootfs/healthcheck.sh rootfs/usr/local/bin/tailscale-join)
+          scripts=(entrypoint.sh rootfs/healthcheck.sh rootfs/usr/local/bin/tailscale-join rootfs/usr/local/bin/tinfoil-identity-token)
           for script in "${scripts[@]}"; do bash -n "$script"; done
           shellcheck -x "${scripts[@]}"
           python3 -m py_compile rootfs/usr/local/bin/workspace-unlock
@@ -43,6 +43,12 @@ jobs:
             TAILSCALE_UP_ARGS="--hostname=example --ssh" configure
             grep -Fx -- "--hostname=example --ssh" "$TAILSCALE_UP_ARGS_FILE"
             if (TAILSCALE_UP_ARGS="--auth-key=secret" configure); then exit 1; fi
+            if (TAILSCALE_UP_ARGS="--client-id=example" configure); then exit 1; fi
+            if (IDENTITY_ISSUER_URL=http://id.example.com configure); then exit 1; fi
+            test ! -e "$TAILSCALE_FEDERATED_FILE"
+            IDENTITY_ISSUER_URL=https://id.example.com/ TAILSCALE_UP_ARGS="--client-id=example" configure
+            grep -Fx "https://id.example.com" "$IDENTITY_ISSUER_FILE"
+            test -e "$TAILSCALE_FEDERATED_FILE"
           '
           docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c \
             'grep -qx "PermitRootLogin prohibit-password" /etc/ssh/sshd_config'

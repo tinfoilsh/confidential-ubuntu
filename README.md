@@ -66,6 +66,21 @@ auth key over SSH to join the tailnet:
 
 Node state is kept in memory, so the workspace joins again after every reboot.
 
+## Identity tokens
+
+Uncomment `IDENTITY_ISSUER_URL` in the config and point it at an identity
+issuer you run. The workspace attests itself to that issuer and receives a
+short-lived OpenID Connect token, with no stored credential:
+
+    ssh my-sandbox tinfoil-identity-token sts.amazonaws.com
+
+The argument is the token's audience. Use the token wherever OpenID Connect
+federation is accepted, such as assuming a cloud role.
+
+With an issuer configured, Tailscale needs no auth key: put the
+`--client-id` of a Tailscale federated identity in `TAILSCALE_UP_ARGS` and the
+workspace joins the tailnet by itself at every boot.
+
 ## Release
 
 Run the **Tinfoil Release** workflow with a new `vMAJOR.MINOR.PATCH` version.

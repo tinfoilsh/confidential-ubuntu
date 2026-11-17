@@ -16,6 +16,11 @@ TELEPORT_TOKEN_DIGEST_CHARS=16
 # tailscale-join passes these options to the tailnet login; their presence enables Tailscale.
 TAILSCALE_UP_ARGS_FILE=/run/tailscale-up-args
 
+# tinfoil-identity-token requests tokens from this issuer; with a Tailscale
+# client ID in the options, the workspace joins the tailnet through it at boot.
+IDENTITY_ISSUER_FILE=/run/tinfoil-identity-issuer
+TAILSCALE_FEDERATED_FILE=/run/tailscale-federated
+
 fail() { printf 'confidential-ubuntu: %s\n' "$*" >&2; exit 1; }
 
 configure() {
@@ -23,8 +28,14 @@ configure() {
     printf '%s\n' "${SSH_KEYS:?SSH_KEYS is required}" > /run/authorized_keys
     ssh-keygen -lf /run/authorized_keys >/dev/null 2>&1 || fail 'SSH_KEYS has no usable public key'
     [[ -z ${TELEPORT_PROXY:-} ]] || configure_teleport
+    [[ -z ${IDENTITY_ISSUER_URL:-} ]] || configure_identity
     [[ -z ${TAILSCALE_UP_ARGS:-} ]] || configure_tailscale
     umask 022
+}
+
+configure_identity() {
+    [[ $IDENTITY_ISSUER_URL == https://* ]] || fail 'IDENTITY_ISSUER_URL must be an https URL'
+    printf '%s\n' "${IDENTITY_ISSUER_URL%/}" > "$IDENTITY_ISSUER_FILE"
 }
 
 configure_tailscale() {
@@ -33,6 +44,10 @@ configure_tailscale() {
             fail 'TAILSCALE_UP_ARGS must not carry credentials; send the auth key to tailscale-join' ;;
     esac
     printf '%s\n' "$TAILSCALE_UP_ARGS" > "$TAILSCALE_UP_ARGS_FILE"
+    if [[ $TAILSCALE_UP_ARGS == *--client-id=* ]]; then
+        [[ -e $IDENTITY_ISSUER_FILE ]] || fail 'a Tailscale client ID requires IDENTITY_ISSUER_URL'
+        : > "$TAILSCALE_FEDERATED_FILE"
+    fi
 }
 
 configure_teleport() {
