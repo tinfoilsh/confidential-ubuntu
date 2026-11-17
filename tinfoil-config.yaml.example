@@ -42,3 +42,5 @@ containers:
 
 shim:
   upstream-port: 22
+  # Shut the guest down gracefully on stop so unflushed volume writes are kept.
+  drain_connections: true
