@@ -1,4 +1,4 @@
-cvm-version: "0.15.3-rc.1@sha256:ddd2e76a629df1bd4ec507441a387ac5db010ebc1bda3e372756e095df8692eb"
+cvm-version: "0.15.4-rc.1@sha256:10d9360322df0876e714e16d72328870da94487c7e23038494f8ced900d6fa9b"
 cpus: 4
 memory: 8192
 
