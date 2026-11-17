@@ -3,52 +3,66 @@
 A bare Ubuntu workspace that runs inside a confidential VM. You log in as root
 over SSH, pinned to the host key the enclave attests.
 
-## Deploy
+## Quickstart
 
-Each release publishes two example configs pinned to its image:
+Install the [Tinfoil CLI](https://docs.tinfoil.sh/sdk/cli-sdk), or bring it up
+to date with `tinfoil update`, and sign in:
 
-- `tinfoil-config.yaml.example`: 4 CPUs, 8 GiB RAM, no GPU, and no persistent volume.
-- `tinfoil-config.gpu.yaml.example`: 120 CPUs, 1 TiB RAM, 8 GPUs, and a
-  `workspace` volume at `/mnt/disk`. Adjust the resources to fit the selected host.
+    tinfoil login
 
-Copy one to `configs/sandbox.yaml` and replace the `null` value of `SSH_KEYS`
-with your SSH public keys. The config is sent to Tinfoil to launch the VM and
-is included in its attestation collateral, so keep private keys and other
-secrets out of it. Git and the Docker build ignore the `configs/` folder.
+Download the config pinned to the latest release:
 
-    tinfoil container create my-sandbox --config configs/sandbox.yaml
+    curl -fsSLo sandbox.yaml \
+      https://github.com/tinfoilsh/confidential-ubuntu/releases/latest/download/tinfoil-config.yaml.example
 
-This uses your organization's default host; pass `--host <host>` to choose one
-from `tinfoil container hosts`. The GPU example needs a host with GPUs and a
-disk on that host:
+Open `sandbox.yaml` and replace the `null` value of `SSH_KEYS` with your SSH
+public key. Then launch the workspace, verify it, and connect:
 
-    tinfoil container create my-sandbox --config configs/sandbox.yaml \
-      --host <host> --volume <disk-name>:workspace
-
-Keep the exact launched file: connections are verified against its bytes.
-Changing a key means editing the config and launching a new container.
-
-## Connect
-
-    tinfoil attest-ssh my-sandbox \
-      --config configs/sandbox.yaml \
-      --identity <authorized-private-key-file> \
-      --install
+    tinfoil container create my-sandbox --config sandbox.yaml
+    tinfoil attest-ssh my-sandbox --config sandbox.yaml --install
     ssh my-sandbox
 
-`attest-ssh` verifies the enclave and pins its attested host key. The key
-rotates when the enclave reboots, so run it again before reconnecting. See
-[Attested SSH](https://docs.tinfoil.sh/containers/attested-ssh).
+`attest-ssh` checks the enclave against your config file and pins its attested
+host key, so keep the exact file you launched. The config is public in the
+attestation: never put private keys or other secrets in it.
 
-## Unlock
+## Tailscale
 
-A volume is unlocked from within the CVM by sending it the volume key over SSH:
+In `sandbox.yaml`, uncomment `TAILSCALE_UP_ARGS` and set the `tailscale up`
+options the workspace should use, such as its hostname or tags. After
+connecting, send an auth key from your tailnet's admin console over SSH:
+
+    ssh my-sandbox tailscale-join < tailscale-auth-key
+
+The workspace is then reachable from your tailnet under that hostname.
+
+## GPUs and persistent storage
+
+Use `tinfoil-config.gpu.yaml.example` from the same release instead. It asks for
+8 GPUs and mounts a `workspace` volume at `/mnt/disk`; adjust the resources to
+the host. Create the volume, attach it at launch, and unlock it with a key only
+you hold:
+
+    tinfoil volume create my-disk --size 100GB
+    tinfoil container create my-sandbox --config sandbox.yaml --volume my-disk:workspace
+    tinfoil attest-ssh my-sandbox --config sandbox.yaml --install
 
     openssl rand -out workspace.key 64    # keep it; losing it loses the data
     ssh my-sandbox workspace-unlock < workspace.key
 
-The first run formats a blank volume; later runs open it with the same key. See
-[Encrypted volumes](https://docs.tinfoil.sh/containers/encrypted-volumes).
+The first unlock formats the blank volume. `/root` then lives on it.
+
+## After a restart
+
+A restarted enclave has a new host key, a locked volume, and no tailnet
+membership. Verify it again, then repeat the steps you use:
+
+    tinfoil attest-ssh my-sandbox --config sandbox.yaml --install
+    ssh my-sandbox workspace-unlock < workspace.key
+    ssh my-sandbox tailscale-join < tailscale-auth-key
+
+Changing an SSH key or a Tailscale option means editing the config and launching
+a new container.
 
 ## Teleport
 
@@ -56,17 +70,6 @@ Uncomment `TELEPORT_PROXY` in the config to enroll the workspace as a Teleport
 SSH node. It joins with the `bound_keypair` method using the attested
 `teleport-join` key, and expects a join token named `tinfoil-` followed by the
 first 16 hex characters of the SHA-256 digest of that key's SPKI encoding.
-
-## Tailscale
-
-Uncomment `TAILSCALE_UP_ARGS` in the config and set the `tailscale up` options
-the workspace should use, such as its hostname or tags. Leave credentials out:
-the config is public in the attestation. After verifying the enclave, send an
-auth key over SSH to join the tailnet:
-
-    ssh my-sandbox tailscale-join < tailscale-auth-key
-
-Node state is kept in memory, so the workspace joins again after every reboot.
 
 ## Release
 
