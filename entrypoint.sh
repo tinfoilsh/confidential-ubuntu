@@ -13,6 +13,9 @@ TELEPORT_JOIN_KEY=/run/tinfoil/keys/teleport-join
 TELEPORT_CONFIG=/etc/teleport.yaml
 TELEPORT_TOKEN_DIGEST_CHARS=16
 
+# tailscale-join passes these options to the tailnet login; their presence enables Tailscale.
+TAILSCALE_UP_ARGS_FILE=/run/tailscale-up-args
+
 fail() { printf 'confidential-ubuntu: %s\n' "$*" >&2; exit 1; }
 
 configure() {
@@ -20,7 +23,16 @@ configure() {
     printf '%s\n' "${SSH_KEYS:?SSH_KEYS is required}" > /run/authorized_keys
     ssh-keygen -lf /run/authorized_keys >/dev/null 2>&1 || fail 'SSH_KEYS has no usable public key'
     [[ -z ${TELEPORT_PROXY:-} ]] || configure_teleport
+    [[ -z ${TAILSCALE_UP_ARGS:-} ]] || configure_tailscale
     umask 022
+}
+
+configure_tailscale() {
+    case $TAILSCALE_UP_ARGS in
+        *auth-key*|*authkey*|*client-secret*)
+            fail 'TAILSCALE_UP_ARGS must not carry credentials; send the auth key to tailscale-join' ;;
+    esac
+    printf '%s\n' "$TAILSCALE_UP_ARGS" > "$TAILSCALE_UP_ARGS_FILE"
 }
 
 configure_teleport() {

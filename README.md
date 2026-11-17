@@ -55,6 +55,17 @@ SSH node. It joins with the `bound_keypair` method using the attested
 `teleport-join` key, and expects a join token named `tinfoil-` followed by the
 first 16 hex characters of the SHA-256 digest of that key's SPKI encoding.
 
+## Tailscale
+
+Uncomment `TAILSCALE_UP_ARGS` in the config and set the `tailscale up` options
+the workspace should use, such as its hostname or tags. Leave credentials out:
+the config is public in the attestation. After verifying the enclave, send an
+auth key over SSH to join the tailnet:
+
+    ssh my-sandbox tailscale-join < tailscale-auth-key
+
+Node state is kept in memory, so the workspace joins again after every reboot.
+
 ## Release
 
 Run the **Tinfoil Release** workflow with a new `vMAJOR.MINOR.PATCH` version.

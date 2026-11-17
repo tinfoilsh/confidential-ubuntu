@@ -32,12 +32,20 @@ RUN curl -fsSLo /tmp/teleport.tgz "https://cdn.teleport.dev/teleport-v${TELEPORT
     && tar -xzf /tmp/teleport.tgz -C /usr/local/bin --strip-components=1 teleport/teleport \
     && rm /tmp/teleport.tgz
 
+ARG TAILSCALE_VERSION=1.104.7
+ARG TAILSCALE_SHA256=e56693ff74a64f2591b7e819c280635a100aae1ddfb0ef058fcd052b7cd8d16c
+RUN curl -fsSLo /tmp/tailscale.tgz "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz" \
+    && echo "${TAILSCALE_SHA256}  /tmp/tailscale.tgz" | sha256sum -c - \
+    && tar -xzf /tmp/tailscale.tgz -C /usr/local/bin --strip-components=1 \
+         "tailscale_${TAILSCALE_VERSION}_amd64/tailscale" "tailscale_${TAILSCALE_VERSION}_amd64/tailscaled" \
+    && rm /tmp/tailscale.tgz
+
 COPY --chmod=0755 entrypoint.sh /entrypoint
 COPY rootfs/ /
-RUN for script in /entrypoint /healthcheck.sh; do bash -n "$script" || exit 1; done
+RUN for script in /entrypoint /healthcheck.sh /usr/local/bin/tailscale-join; do bash -n "$script" || exit 1; done
 
 RUN systemctl disable ssh.socket \
-    && systemctl enable ssh.service teleport.service \
+    && systemctl enable ssh.service teleport.service tailscaled.service \
     && systemctl mask systemd-udevd.service systemd-udevd-control.socket systemd-udevd-kernel.socket \
          systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service \
          systemd-resolved.service systemd-timesyncd.service console-getty.service \

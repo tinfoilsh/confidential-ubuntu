@@ -17,7 +17,7 @@ jobs:
           persist-credentials: false
       - name: Check shell scripts
         run: |
-          scripts=(entrypoint.sh rootfs/healthcheck.sh)
+          scripts=(entrypoint.sh rootfs/healthcheck.sh rootfs/usr/local/bin/tailscale-join)
           for script in "${scripts[@]}"; do bash -n "$script"; done
           shellcheck -x "${scripts[@]}"
           python3 -m py_compile rootfs/usr/local/bin/workspace-unlock
@@ -39,6 +39,10 @@ jobs:
             test ! -e "$TELEPORT_CONFIG"
             TELEPORT_PROXY=example.teleport.sh:443 configure
             grep -Fx "  proxy_server: \"example.teleport.sh:443\"" "$TELEPORT_CONFIG"
+            test ! -e "$TAILSCALE_UP_ARGS_FILE"
+            TAILSCALE_UP_ARGS="--hostname=example --ssh" configure
+            grep -Fx -- "--hostname=example --ssh" "$TAILSCALE_UP_ARGS_FILE"
+            if (TAILSCALE_UP_ARGS="--auth-key=secret" configure); then exit 1; fi
           '
           docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c \
             'grep -qx "PermitRootLogin prohibit-password" /etc/ssh/sshd_config'

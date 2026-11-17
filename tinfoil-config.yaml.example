@@ -28,6 +28,9 @@ containers:
       - SSH_KEYS: null # Required: quoted public key, or a YAML block for multiple keys.
       # Optional: quoted Teleport proxy address (host:port) to enroll with.
       # - TELEPORT_PROXY: "teleport.example.com:443"
+      # Optional: quoted `tailscale up` options; setting them enables Tailscale.
+      # Send the auth key to `tailscale-join` over SSH, never through this file.
+      # - TAILSCALE_UP_ARGS: "--hostname=my-sandbox"
     tmpfs:
       /run: "rw,nosuid,nodev,mode=755"
     healthcheck:
