@@ -2,7 +2,7 @@
 #
 # Confidential Ubuntu: a measured, CVM-admin interactive workspace.
 # The base is digest-pinned for attestation.
-ARG BASE_IMAGE=docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+ARG BASE_IMAGE=docker.io/library/ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8
 
 FROM ${BASE_IMAGE}
 ENV container=docker LANG=en_US.UTF-8
