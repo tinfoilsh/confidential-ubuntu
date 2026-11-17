@@ -42,10 +42,10 @@ RUN curl -fsSLo /tmp/tailscale.tgz "https://pkgs.tailscale.com/stable/tailscale_
 
 COPY --chmod=0755 entrypoint.sh /entrypoint
 COPY rootfs/ /
-RUN for script in /entrypoint /healthcheck.sh /usr/local/bin/tailscale-join; do bash -n "$script" || exit 1; done
+RUN for script in /entrypoint /healthcheck.sh /usr/local/bin/tailscale-join /usr/local/bin/tinfoil-identity-token; do bash -n "$script" || exit 1; done
 
 RUN systemctl disable ssh.socket \
-    && systemctl enable ssh.service teleport.service tailscaled.service \
+    && systemctl enable ssh.service teleport.service tailscaled.service tailscale-join.service \
     && systemctl mask systemd-udevd.service systemd-udevd-control.socket systemd-udevd-kernel.socket \
          systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service \
          systemd-resolved.service systemd-timesyncd.service console-getty.service \
