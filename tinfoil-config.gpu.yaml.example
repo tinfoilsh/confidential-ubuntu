@@ -1,4 +1,4 @@
-cvm-version: "0.15.3-rc.1+gpu@sha256:1421cbb45dc428f6270d106d8eb68faab3ce7ca02ff2fbb2dc0968605004579f"
+cvm-version: "0.15.4-rc.1+gpu@sha256:50f772fee6e6e72b81e4c100395cc40dec4463a677d8d22828dfda42b4c49e0f"
 cpus: 120
 memory: 1048576
 gpus: 8
