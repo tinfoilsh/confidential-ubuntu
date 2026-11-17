@@ -16,9 +16,11 @@ with your SSH public keys. The config is sent to Tinfoil to launch the VM and
 is included in its attestation collateral, so keep private keys and other
 secrets out of it. Git and the Docker build ignore the `configs/` folder.
 
-    tinfoil container create my-sandbox --config configs/sandbox.yaml --host <host>
+    tinfoil container create my-sandbox --config configs/sandbox.yaml
 
-The GPU example also needs a disk on that host:
+This uses your organization's default host; pass `--host <host>` to choose one
+from `tinfoil container hosts`. The GPU example needs a host with GPUs and a
+disk on that host:
 
     tinfoil container create my-sandbox --config configs/sandbox.yaml \
       --host <host> --volume <disk-name>:workspace
