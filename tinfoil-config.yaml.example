@@ -17,7 +17,7 @@ networks:
 
 containers:
   - name: workspace
-    image: null # Set by each release to its image digest.
+    image: "ghcr.io/tinfoilsh/confidential-ubuntu@sha256:10007845e48d54d5555dd06df8aac209a3b6a66e89a48689f146f9252faf2132"
     restart: on-failure
     cvm_admin: true
     stop_timeout: 120
