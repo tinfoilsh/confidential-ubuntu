@@ -25,6 +25,17 @@ jobs:
         run: docker build -t confidential-ubuntu:test .
       - name: Check sshd config and root login policy
         run: |
-          docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c "mkdir -p /run/sshd && ssh-keygen -A && /usr/sbin/sshd -t"
+          docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c '
+            source /entrypoint
+            mkdir -p /run/sshd "$(dirname "$HOST_KEY")"
+            ssh-keygen -q -t ecdsa -b 256 -m PEM -N "" -f "$HOST_KEY"
+            SSH_KEYS=$(cat "$HOST_KEY.pub")
+            export SSH_KEYS
+            configure
+            diff /run/authorized_keys <(printf "%s\n" "$SSH_KEYS")
+            /usr/sbin/sshd -t
+            if (SSH_KEYS= configure); then exit 1; fi
+            if (SSH_KEYS=invalid configure); then exit 1; fi
+          '
           docker run --rm --entrypoint /bin/bash confidential-ubuntu:test -c \
             'grep -qx "PermitRootLogin prohibit-password" /etc/ssh/sshd_config'
