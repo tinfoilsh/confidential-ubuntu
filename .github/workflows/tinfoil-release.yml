@@ -108,3 +108,45 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --notes-file release-notes.md
+
+  pin-examples:
+    needs: [build, release]
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # push the branch that holds the pinned examples
+      pull-requests: write  # open the pull request
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Open a pull request pinning the examples to the published image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          sed -i "s|^    image: .*|    image: \"$IMAGE@$DIGEST\"|" tinfoil-config*.yaml.example
+          if git diff --quiet; then
+            exit 0
+          fi
+          PIN_BRANCH="chore/pin-image-$VERSION"
+          gh api --method POST "repos/$GH_REPO/git/refs" \
+            -f "ref=refs/heads/$PIN_BRANCH" -f "sha=$GITHUB_SHA" --silent
+          for example in tinfoil-config*.yaml.example; do
+            if git diff --quiet -- "$example"; then
+              continue
+            fi
+            gh api --method PUT "repos/$GH_REPO/contents/$example" \
+              -f "branch=$PIN_BRANCH" \
+              -f "sha=$(git rev-parse "HEAD:$example")" \
+              -f "content=$(base64 -w0 "$example")" \
+              -f "message=chore: pin the workspace image to $VERSION" \
+              --silent
+          done
+          gh pr create --base "$RELEASE_BRANCH" --head "$PIN_BRANCH" \
+            --title "chore: pin the workspace image to $VERSION" \
+            --body "Pins both example configs to the image published in $VERSION."

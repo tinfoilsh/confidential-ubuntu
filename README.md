@@ -74,5 +74,5 @@ first 16 hex characters of the SHA-256 digest of that key's SPKI encoding.
 ## Release
 
 Run the **Tinfoil Release** workflow with a new `vMAJOR.MINOR.PATCH` version.
-It builds and pushes the image and publishes a release containing both examples
-pinned to that image's digest. The examples in the repository keep `image: null`.
+It builds and pushes the image, publishes a release containing both examples
+pinned to that image's digest, and opens a pull request with the same pin.
