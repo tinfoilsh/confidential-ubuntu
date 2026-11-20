@@ -52,6 +52,16 @@ you hold:
 
 The first unlock formats the blank volume. `/root` then lives on it.
 
+## Choosing a host
+
+Without `--host`, the workspace and its volume go to your organization's
+default host. If your organization has several hosts, list them and name the
+one to use. A volume must be on the same host as the workspace it attaches to:
+
+    tinfoil container hosts
+    tinfoil volume create my-disk --size 100GB --host <host>
+    tinfoil container create my-sandbox --config sandbox.yaml --host <host> --volume my-disk:workspace
+
 ## After a restart
 
 A restarted enclave has a new host key, a locked volume, and no tailnet
