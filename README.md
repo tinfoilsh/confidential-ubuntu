@@ -52,6 +52,14 @@ you hold:
 
 The first unlock formats the blank volume. `/root` then lives on it.
 
+Only `/root` and `/mnt/disk` are on the volume; everything else resets when the
+enclave restarts. The volume outlives the workspace: `tinfoil volume list` shows
+it, and once the old workspace is deleted a new one can attach it and unlock it
+with the same key.
+
+To give the CPU example a volume, copy the `volumes` block and the
+`persistent_volumes` line from the GPU example into it.
+
 ## Choosing a host
 
 Without `--host`, the workspace and its volume go to your organization's
